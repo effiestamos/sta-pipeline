@@ -24,7 +24,6 @@ const CLOSERS = [
   'OWEN SAMMARONE'
 ];
 
-// Map full names to sheet dropdown values
 const CLOSER_DROPDOWN_MAP = {
   'AMMAR ELMAHALAWY': 'Ammar',
   'JACK WATSON': 'Jack',
@@ -35,18 +34,22 @@ const CLOSER_DROPDOWN_MAP = {
 };
 
 const STATUS_OPTIONS = [
-  'Closed', 'Deposit', 'DQ', 'FDQ',
+  'CLOSED👍🏼',
+  'Deposit 💵 Referral',
+  'DQ',
+  'FDQ',
   'Partner | Multiple Partners',
   'Sticker Shock | Investment Issue',
   'Iffy / Feeling it Out / Not Sure',
-  'DIM - Do It Myself',
-  'Fact Finder / Coaching / Researching',
-  'Timing / Logistics',
-  'Need to Pitch / Offer',
+  'DIM - do it myself',
+  'Fact Finder/Coaching/Researching',
+  'Timing/Logistics',
+  'Need to pitch/offer',
   'Not Moving Forward',
-  'Y - Long Follow Up',
-  'Re-Offer',
-  'Burned'
+  'Y - Long follow up',
+  'Re-offer',
+  'Burned 🚒',
+  'Refund'
 ];
 
 const TEMP_OPTIONS = ['Cold', 'Cool', 'Warm', 'Hot', '🔥🔥🔥'];
@@ -76,23 +79,28 @@ function applyFUPRules(prospect) {
   return prospect;
 }
 
+function getFollowUpDate(eodDate, mentionsNextWeek) {
+  if (!mentionsNextWeek) return null;
+  const parts = eodDate.split('/');
+  const month = parts[0];
+  const year = parts[2];
+  return `${month}/?/${year}`;
+}
+
 async function applyRowColor(sheets, tabName, rowIndex, status) {
   let color = null;
-  if (status === 'Closed') {
-    color = { red: 0.851, green: 0.918, blue: 0.827 }; // #d9ead3
+  if (status === 'CLOSED👍🏼') {
+    color = { red: 0.851, green: 0.918, blue: 0.827 };
   } else if (status === 'DQ' || status === 'FDQ') {
-    color = { red: 0.988, green: 0.898, blue: 0.804 }; // #fce5cd
+    color = { red: 0.988, green: 0.898, blue: 0.804 };
   }
-  
   if (!color) return;
 
   const sheetInfoResponse = await sheets.spreadsheets.get({
     spreadsheetId: SPREADSHEET_ID,
   });
-  
   const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
   if (!sheet) return;
-  
   const sheetId = sheet.properties.sheetId;
 
   await sheets.spreadsheets.batchUpdate({
@@ -113,6 +121,40 @@ async function applyRowColor(sheets, tabName, rowIndex, status) {
             }
           },
           fields: 'userEnteredFormat.backgroundColor'
+        }
+      }]
+    }
+  });
+}
+
+async function applyRedText(sheets, tabName, rowIndex, colIndex) {
+  const sheetInfoResponse = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
+  const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
+  if (!sheet) return;
+  const sheetId = sheet.properties.sheetId;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    resource: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: rowIndex - 1,
+            endRowIndex: rowIndex,
+            startColumnIndex: colIndex,
+            endColumnIndex: colIndex + 1
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                foregroundColor: { red: 1, green: 0, blue: 0 }
+              }
+            }
+          },
+          fields: 'userEnteredFormat.textFormat.foregroundColor'
         }
       }]
     }
@@ -144,22 +186,29 @@ WHAT TO SKIP (add to skipped array, do NOT add to prospects):
 - Examples: "Que Jay - RS", "Karla - NS", "John - Cancelled"
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
-- First time calls where the call actually happened and closer wrote notes about the conversation
+- First time calls where the call actually happened and closer wrote notes
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Any entry with FUP right after the name: "Alan Ruchtein - FUP - RS"
 - Log all follow-ups even if RS, NS, or Cancelled
 
 EOD NOTES RULES:
-- For NEW prospects: prefix notes with date like "5/8 EOD" then the verbatim notes. Example: "5/8 EOD helps startups raise funds..."
-- For FOLLOW-UPS: prefix with date and FUP outcome like "5/8 EOD FUP - RS" then verbatim notes
-- Copy everything VERBATIM after the prefix. Exact words. No changes. No cleanup.
+- For NEW prospects: prefix with date like "5/8 EOD" then verbatim notes. Example: "5/8 EOD helps startups raise funds..."
+- For FOLLOW-UPS: prefix with "5/8 EOD FUP - RS" then verbatim notes
+- Copy VERBATIM after the prefix. Exact words. No changes. No cleanup.
+
+FOLLOW-UP DATE RULES:
+- If exact date given: use that date
+- If "next week" or "booked a FUP" with no specific date: set nextFollowUpDate to "NEXT_WEEK" and I will format it
+- If no follow-up mentioned: null
 
 OFFERS: Closed = Yes. "Didn't offer" = No. Trial mention = Yes.
 
 Extract date from EOD. Format M/D/YYYY.
 
-STATUS OPTIONS: ${STATUS_OPTIONS.join(', ')}
+STATUS OPTIONS (use EXACTLY as written):
+${STATUS_OPTIONS.join('\n')}
+
 TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')}
 
 Return ONLY valid JSON no markdown:
@@ -170,11 +219,11 @@ Return ONLY valid JSON no markdown:
     {
       "name": "Name",
       "isFollowUp": false,
-      "eodNotes": "5/8 EOD verbatim notes here",
-      "suggestedStatus": "status or null",
+      "eodNotes": "5/8 EOD verbatim notes",
+      "suggestedStatus": "exact status from list or null",
       "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
-      "nextFollowUpDate": "M/D/YYYY or null",
+      "nextFollowUpDate": "M/D/YYYY or NEXT_WEEK or null",
       "setter": "name or null",
       "email": "",
       "flags": []
@@ -204,6 +253,17 @@ Return ONLY valid JSON no markdown:
     const responseText = message.content[0].text;
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
+    
+    // Process NEXT_WEEK dates
+    parsed.prospects = parsed.prospects.map(p => {
+      if (p.nextFollowUpDate === 'NEXT_WEEK') {
+        const parts = parsed.date.split('/');
+        p.nextFollowUpDate = `${parts[0]}/?/${parts[2]}`;
+        p.nextFollowUpDateIsApprox = true;
+      }
+      return p;
+    });
+    
     parsed.prospects = parsed.prospects.map(applyFUPRules);
     res.json(parsed);
   } catch (error) {
@@ -245,6 +305,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
 
     for (const prospect of prospects) {
       const p = applyFUPRules(prospect);
+      const isApproxDate = p.nextFollowUpDate && p.nextFollowUpDate.includes('?');
 
       if (p.isFollowUp) {
         const existingRowIndex = prospectRowMap[p.name.toLowerCase().trim()];
@@ -278,6 +339,9 @@ app.post('/api/save-to-sheets', async (req, res) => {
               valueInputOption: 'USER_ENTERED',
               resource: { values: [[p.nextFollowUpDate]] },
             });
+            if (isApproxDate) {
+              await applyRedText(sheets, tabName, existingRowIndex, 6);
+            }
           }
 
           if (p.offered === 'Yes' || p.offered === 'No') {
@@ -339,6 +403,10 @@ app.post('/api/save-to-sheets', async (req, res) => {
 
         if (p.suggestedStatus) {
           await applyRowColor(sheets, tabName, targetRow, p.suggestedStatus);
+        }
+
+        if (isApproxDate) {
+          await applyRedText(sheets, tabName, targetRow, 6);
         }
       }
     }
