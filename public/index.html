@@ -160,11 +160,34 @@ async function parseEOD() {
   document.getElementById('parseBtn').disabled = false;
 }
 
+function makeStatusSelect(id, suggested) {
+  const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
+  const opts = STATUS_OPTIONS.map(s =>
+    `<option value="${s}" ${s === suggested ? 'selected' : ''}>${s}</option>`
+  ).join('');
+  return `<select id="${id}">${blank}${opts}</select>`;
+}
+
+function makeTempSelect(id, suggested) {
+  const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
+  const opts = TEMP_OPTIONS.map(t =>
+    `<option value="${t}" ${t === suggested ? 'selected' : ''}>${t}</option>`
+  ).join('');
+  return `<select id="${id}">${blank}${opts}</select>`;
+}
+
+function makeOfferedSelect(id, offered) {
+  return `<select id="${id}">
+    <option value="" ${!offered || offered === 'Unknown' ? 'selected' : ''}>—</option>
+    <option value="Yes" ${offered === 'Yes' ? 'selected' : ''}>Yes</option>
+    <option value="No" ${offered === 'No' ? 'selected' : ''}>No</option>
+  </select>`;
+}
+
 function renderResults(data) {
   hasMissingClose = false;
   document.getElementById('results').style.display = 'block';
 
-  // Skipped
   if (data.skipped && data.skipped.length > 0) {
     document.getElementById('skippedSection').style.display = 'block';
     document.getElementById('skippedList').innerHTML = data.skipped.map(s =>
@@ -172,7 +195,6 @@ function renderResults(data) {
     ).join('');
   }
 
-  // Global flags
   if (data.globalFlags && data.globalFlags.length > 0) {
     document.getElementById('flagsSection').style.display = 'block';
     document.getElementById('globalFlags').innerHTML = data.globalFlags.map(f => {
@@ -185,13 +207,11 @@ function renderResults(data) {
     }).join('');
   }
 
-  // Stats note
   if (data.stats) {
     document.getElementById('statsNote').innerHTML =
       `<div class="flag" style="background:#EAF3DE;color:#27500A;">✓ Stats show ${data.stats.offersMade} offers today. Review offer selections below and confirm they match.</div>`;
   }
 
-  // Prospects
   const list = document.getElementById('prospectsList');
   list.innerHTML = '';
   data.prospects.forEach((p, i) => {
@@ -200,13 +220,6 @@ function renderResults(data) {
       (p.suggestedStatus === 'DQ' || p.suggestedStatus === 'FDQ') ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → orange</span>' : '';
 
     const flagsHtml = (p.flags || []).map(f => `<div class="flag">⚑ ${f}</div>`).join('');
-
-    const statusOptions = STATUS_OPTIONS.map(s =>
-      `<option value="${s}" ${s === p.suggestedStatus ? 'selected' : ''}>${s}</option>`
-    ).join('');
-    const tempOptions = TEMP_OPTIONS.map(t =>
-      `<option value="${t}" ${t === p.suggestedTemp ? 'selected' : ''}>${t}</option>`
-    ).join('');
 
     list.innerHTML += `
       <div class="prospect-card ${isClosedClass}" id="prospect-${i}">
@@ -219,19 +232,15 @@ function renderResults(data) {
         <div class="grid-3">
           <div>
             <label>Temp</label>
-            <select id="temp-${i}">${tempOptions}</select>
+            ${makeTempSelect(`temp-${i}`, p.suggestedTemp)}
           </div>
           <div>
             <label>Status</label>
-            <select id="status-${i}">${statusOptions}</select>
+            ${makeStatusSelect(`status-${i}`, p.suggestedStatus)}
           </div>
           <div>
             <label>Offered?</label>
-            <select id="offered-${i}">
-              <option ${p.offered==='Yes'?'selected':''}>Yes</option>
-              <option ${p.offered==='No'?'selected':''}>No</option>
-              <option ${p.offered==='Unknown'?'selected':''}>—</option>
-            </select>
+            ${makeOfferedSelect(`offered-${i}`, p.offered)}
           </div>
         </div>
         <div class="grid-2">
@@ -248,7 +257,6 @@ function renderResults(data) {
       </div>`;
   });
 
-  // Stats
   if (data.stats) {
     const s = data.stats;
     document.getElementById('statsGrid').innerHTML = `
@@ -282,14 +290,12 @@ async function saveToSheets() {
   if (!parsedData) return;
 
   const prospects = parsedData.prospects.map((p, i) => ({
-    name: document.getElementById(`status-${i}`).value === 'Closed' && hasMissingClose
-      ? document.getElementById('missingCloseName')?.value || p.name
-      : p.name,
+    name: p.name,
     email: document.getElementById(`email-${i}`).value,
     isFollowUp: p.isFollowUp,
     eodNotes: p.eodNotes,
-    suggestedStatus: document.getElementById(`status-${i}`).value,
-    suggestedTemp: document.getElementById(`temp-${i}`).value,
+    suggestedStatus: document.getElementById(`status-${i}`).value || null,
+    suggestedTemp: document.getElementById(`temp-${i}`).value || null,
     offered: document.getElementById(`offered-${i}`).value,
     nextFollowUpDate: p.nextFollowUpDate,
     setter: document.getElementById(`setter-${i}`).value,
