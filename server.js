@@ -52,6 +52,44 @@ const STATUS_OPTIONS = [
   'Refund'
 ];
 
+const STATUS_MAP = {
+  'closed': 'CLOSED👍🏼',
+  'close': 'CLOSED👍🏼',
+  'won': 'CLOSED👍🏼',
+  'closed👍🏼': 'CLOSED👍🏼',
+  'deposit': 'Deposit 💵 Referral',
+  'deposit 💵 referral': 'Deposit 💵 Referral',
+  'dq': 'DQ',
+  'fdq': 'FDQ',
+  'partner | multiple partners': 'Partner | Multiple Partners',
+  'partner/multiple partners': 'Partner | Multiple Partners',
+  'sticker shock | investment issue': 'Sticker Shock | Investment Issue',
+  'sticker shock': 'Sticker Shock | Investment Issue',
+  'iffy / feeling it out / not sure': 'Iffy / Feeling it Out / Not Sure',
+  'iffy/feeling it out/not sure': 'Iffy / Feeling it Out / Not Sure',
+  'iffy': 'Iffy / Feeling it Out / Not Sure',
+  'dim - do it myself': 'DIM - do it myself',
+  'dim': 'DIM - do it myself',
+  'fact finder/coaching/researching': 'Fact Finder/Coaching/Researching',
+  'fact finder / coaching / researching': 'Fact Finder/Coaching/Researching',
+  'fact finder': 'Fact Finder/Coaching/Researching',
+  'timing/logistics': 'Timing/Logistics',
+  'timing / logistics': 'Timing/Logistics',
+  'timing': 'Timing/Logistics',
+  'need to pitch/offer': 'Need to pitch/offer',
+  'need to pitch / offer': 'Need to pitch/offer',
+  'need to pitch': 'Need to pitch/offer',
+  'not moving forward': 'Not Moving Forward',
+  'y - long follow up': 'Y - Long follow up',
+  'y - long follow-up': 'Y - Long follow up',
+  'long follow up': 'Y - Long follow up',
+  're-offer': 'Re-offer',
+  'reoffer': 'Re-offer',
+  'burned': 'Burned 🚒',
+  'burned 🚒': 'Burned 🚒',
+  'refund': 'Refund'
+};
+
 const TEMP_OPTIONS = ['Cold', 'Cool', 'Warm', 'Hot', '🔥🔥🔥'];
 
 function getGoogleAuth() {
@@ -61,6 +99,12 @@ function getGoogleAuth() {
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   return auth;
+}
+
+function mapStatus(status) {
+  if (!status) return null;
+  const mapped = STATUS_MAP[status.toLowerCase().trim()];
+  return mapped || status;
 }
 
 function applyFUPRules(prospect) {
@@ -77,14 +121,6 @@ function applyFUPRules(prospect) {
     prospect.suggestedStatus = null;
   }
   return prospect;
-}
-
-function getFollowUpDate(eodDate, mentionsNextWeek) {
-  if (!mentionsNextWeek) return null;
-  const parts = eodDate.split('/');
-  const month = parts[0];
-  const year = parts[2];
-  return `${month}/?/${year}`;
 }
 
 async function applyRowColor(sheets, tabName, rowIndex, status) {
@@ -193,21 +229,36 @@ WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Log all follow-ups even if RS, NS, or Cancelled
 
 EOD NOTES RULES:
-- For NEW prospects: prefix with date like "5/8 EOD" then verbatim notes. Example: "5/8 EOD helps startups raise funds..."
+- For NEW prospects: prefix with date like "5/8 EOD" then verbatim notes
 - For FOLLOW-UPS: prefix with "5/8 EOD FUP - RS" then verbatim notes
 - Copy VERBATIM after the prefix. Exact words. No changes. No cleanup.
 
 FOLLOW-UP DATE RULES:
-- If exact date given: use that date
-- If "next week" or "booked a FUP" with no specific date: set nextFollowUpDate to "NEXT_WEEK" and I will format it
+- If exact date given: use that date in M/D/YYYY format
+- If "next week" or vague future date with no specific date: set nextFollowUpDate to "NEXT_WEEK"
 - If no follow-up mentioned: null
 
 OFFERS: Closed = Yes. "Didn't offer" = No. Trial mention = Yes.
 
 Extract date from EOD. Format M/D/YYYY.
 
-STATUS OPTIONS (use EXACTLY as written):
-${STATUS_OPTIONS.join('\n')}
+STATUS OPTIONS (use EXACTLY as written, copy emoji too):
+CLOSED👍🏼
+Deposit 💵 Referral
+DQ
+FDQ
+Partner | Multiple Partners
+Sticker Shock | Investment Issue
+Iffy / Feeling it Out / Not Sure
+DIM - do it myself
+Fact Finder/Coaching/Researching
+Timing/Logistics
+Need to pitch/offer
+Not Moving Forward
+Y - Long follow up
+Re-offer
+Burned 🚒
+Refund
 
 TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')}
 
@@ -220,7 +271,7 @@ Return ONLY valid JSON no markdown:
       "name": "Name",
       "isFollowUp": false,
       "eodNotes": "5/8 EOD verbatim notes",
-      "suggestedStatus": "exact status from list or null",
+      "suggestedStatus": "exact status from list above or null",
       "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
       "nextFollowUpDate": "M/D/YYYY or NEXT_WEEK or null",
@@ -253,9 +304,13 @@ Return ONLY valid JSON no markdown:
     const responseText = message.content[0].text;
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
-    
-    // Process NEXT_WEEK dates
+
+    // Process NEXT_WEEK dates and map statuses
     parsed.prospects = parsed.prospects.map(p => {
+      // Map status to exact sheet value
+      p.suggestedStatus = mapStatus(p.suggestedStatus);
+      
+      // Handle approximate dates
       if (p.nextFollowUpDate === 'NEXT_WEEK') {
         const parts = parsed.date.split('/');
         p.nextFollowUpDate = `${parts[0]}/?/${parts[2]}`;
@@ -263,7 +318,7 @@ Return ONLY valid JSON no markdown:
       }
       return p;
     });
-    
+
     parsed.prospects = parsed.prospects.map(applyFUPRules);
     res.json(parsed);
   } catch (error) {
@@ -305,6 +360,8 @@ app.post('/api/save-to-sheets', async (req, res) => {
 
     for (const prospect of prospects) {
       const p = applyFUPRules(prospect);
+      // Re-map status in case frontend changed it
+      p.suggestedStatus = mapStatus(p.suggestedStatus);
       const isApproxDate = p.nextFollowUpDate && p.nextFollowUpDate.includes('?');
 
       if (p.isFollowUp) {

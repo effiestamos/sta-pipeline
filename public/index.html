@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
-  .header { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+  .header { background: #1a1a2e; color: white; padding: 1rem 2rem; }
   .header h1 { font-size: 18px; font-weight: 500; }
   .container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
   .card { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -43,7 +43,6 @@
   .loading { text-align: center; padding: 2rem; color: #666; }
   .success { background: #EAF3DE; color: #27500A; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
   .error { background: #FCEBEB; color: #791F1F; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
-  .section-title { font-size: 14px; font-weight: 500; color: #333; margin-bottom: 10px; margin-top: 1rem; }
   .fup-info { font-size: 12px; color: #666; margin-top: 4px; }
   .actions { display: flex; gap: 10px; align-items: center; margin-top: 1rem; }
   #results { display: none; }
@@ -103,19 +102,24 @@
 
 <script>
 const STATUS_OPTIONS = [
-  'Closed','Deposit','DQ','FDQ',
+  'CLOSED👍🏼',
+  'Deposit 💵 Referral',
+  'DQ',
+  'FDQ',
   'Partner | Multiple Partners',
   'Sticker Shock | Investment Issue',
   'Iffy / Feeling it Out / Not Sure',
-  'DIM - Do It Myself',
-  'Fact Finder / Coaching / Researching',
-  'Timing / Logistics',
-  'Need to Pitch / Offer',
+  'DIM - do it myself',
+  'Fact Finder/Coaching/Researching',
+  'Timing/Logistics',
+  'Need to pitch/offer',
   'Not Moving Forward',
-  'Y - Long Follow Up',
-  'Re-Offer',
-  'Burned'
+  'Y - Long follow up',
+  'Re-offer',
+  'Burned 🚒',
+  'Refund'
 ];
+
 const TEMP_OPTIONS = ['Cold','Cool','Warm','Hot','🔥🔥🔥'];
 
 let parsedData = null;
@@ -184,6 +188,14 @@ function makeOfferedSelect(id, offered) {
   </select>`;
 }
 
+function isClosedStatus(status) {
+  return status === 'CLOSED👍🏼';
+}
+
+function isDQStatus(status) {
+  return status === 'DQ' || status === 'FDQ';
+}
+
 function renderResults(data) {
   hasMissingClose = false;
   document.getElementById('results').style.display = 'block';
@@ -215,17 +227,22 @@ function renderResults(data) {
   const list = document.getElementById('prospectsList');
   list.innerHTML = '';
   data.prospects.forEach((p, i) => {
-    const isClosedClass = p.suggestedStatus === 'Closed' ? 'closed' : (p.suggestedStatus === 'DQ' || p.suggestedStatus === 'FDQ') ? 'dq' : '';
-    const rowColorNote = p.suggestedStatus === 'Closed' ? '<span style="font-size:11px;background:#EAF3DE;color:#27500A;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → green</span>' :
-      (p.suggestedStatus === 'DQ' || p.suggestedStatus === 'FDQ') ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → orange</span>' : '';
+    const isClosed = isClosedStatus(p.suggestedStatus);
+    const isDQ = isDQStatus(p.suggestedStatus);
+    const cardClass = isClosed ? 'closed' : isDQ ? 'dq' : '';
+    const rowColorNote = isClosed
+      ? '<span style="font-size:11px;background:#EAF3DE;color:#27500A;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → green</span>'
+      : isDQ
+      ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → orange</span>'
+      : '';
 
     const flagsHtml = (p.flags || []).map(f => `<div class="flag">⚑ ${f}</div>`).join('');
 
     list.innerHTML += `
-      <div class="prospect-card ${isClosedClass}" id="prospect-${i}">
+      <div class="prospect-card ${cardClass}" id="prospect-${i}">
         <div class="prospect-name">${p.name} ${rowColorNote}
           <span class="badge ${p.isFollowUp ? 'badge-fup' : 'badge-new'}">${p.isFollowUp ? 'Follow-up' : 'New call'}</span>
-          ${p.suggestedStatus === 'Closed' ? '<span class="badge badge-closed">Closed</span>' : ''}
+          ${isClosed ? '<span class="badge badge-closed">Closed</span>' : ''}
         </div>
         ${flagsHtml}
         <div class="eod-notes">${p.eodNotes}</div>
@@ -312,7 +329,7 @@ async function saveToSheets() {
       email: '',
       isFollowUp: true,
       eodNotes: `${parsedData.date} EOD — CLOSED (identified from STA Sales channel)`,
-      suggestedStatus: 'Closed',
+      suggestedStatus: 'CLOSED👍🏼',
       suggestedTemp: '🔥🔥🔥',
       offered: 'Yes',
       nextFollowUpDate: null,
