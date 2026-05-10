@@ -50,17 +50,12 @@ function getGoogleAuth() {
   return auth;
 }
 
-// Force correct temp/status for FUP outcomes regardless of what AI returns
 function applyFUPRules(prospect) {
   if (!prospect.isFollowUp) return prospect;
-  
   const notes = (prospect.eodNotes || '').toUpperCase();
-  
-  // Check for RS anywhere in the notes
-  const isRS = notes.includes('FUP - RS') || notes.includes('FUP-RS') || notes.includes('- RS');
-  const isNS = notes.includes('FUP - NS') || notes.includes('FUP-NS') || notes.includes('- NS') || notes.includes('NO SHOW');
-  const isCancelled = notes.includes('CANCELLED') || notes.includes('CANCELED');
-  
+  const isRS = notes.includes('FUP - RS') || notes.includes('FUP-RS');
+  const isNS = notes.includes('FUP - NS') || notes.includes('FUP-NS');
+  const isCancelled = notes.includes('FUP - CANCELLED') || notes.includes('FUP - CANCELED');
   if (isRS) {
     prospect.suggestedTemp = null;
     prospect.suggestedStatus = null;
@@ -68,8 +63,22 @@ function applyFUPRules(prospect) {
     prospect.suggestedTemp = 'Cold';
     prospect.suggestedStatus = null;
   }
-  
   return prospect;
+}
+
+async function findLastDataRow(sheets, tabName) {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `'${tabName}'!A:A`,
+  });
+  const rows = response.data.values || [];
+  let lastRow = 1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i] && rows[i][0] && rows[i][0].toString().trim() !== '') {
+      lastRow = i + 1;
+    }
+  }
+  return lastRow;
 }
 
 app.get('/', (req, res) => {
@@ -82,7 +91,6 @@ app.get('/api/closers', (req, res) => {
 
 app.post('/api/parse-eod', async (req, res) => {
   const { eodText, closerName } = req.body;
-  
   if (!eodText || !closerName) {
     return res.status(400).json({ error: 'Missing EOD text or closer name' });
   }
@@ -114,7 +122,7 @@ Extract date from EOD. Format M/D/YYYY.
 STATUS OPTIONS: ${STATUS_OPTIONS.join(', ')}
 TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON no markdown:
 {
   "date": "M/D/YYYY",
   "closer": "${closerName}",
@@ -156,10 +164,7 @@ Return ONLY valid JSON:
     const responseText = message.content[0].text;
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
-    
-    // Apply server-side FUP rules to override any AI mistakes
     parsed.prospects = parsed.prospects.map(applyFUPRules);
-    
     res.json(parsed);
   } catch (error) {
     console.error('Parse error:', error);
@@ -169,19 +174,20 @@ Return ONLY valid JSON:
 
 app.post('/api/save-to-sheets', async (req, res) => {
   const { prospects, stats, date, closerName } = req.body;
-  
+
   try {
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     const tabName = closerName;
 
+    // Get all existing data to build prospect row map
     const existingResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${tabName}'!A:K`,
     });
-    
     const existingRows = existingResponse.data.values || [];
-    
+
+    // Build map of prospect name -> row number
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
@@ -191,21 +197,30 @@ app.post('/api/save-to-sheets', async (req, res) => {
       }
     });
 
+    // Find last row with actual data in column A
+    let lastDataRow = 1;
+    existingRows.forEach((row, index) => {
+      if (row && row[0] && row[0].toString().trim() !== '') {
+        lastDataRow = index + 1;
+      }
+    });
+
     for (const prospect of prospects) {
-      // Re-apply FUP rules server side before saving
       const p = applyFUPRules(prospect);
-      
+
       if (p.isFollowUp) {
         const existingRowIndex = prospectRowMap[p.name.toLowerCase().trim()];
-        
+
         if (existingRowIndex) {
+          // Get current EOD notes
           const currentNotesResponse = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!E${existingRowIndex}`,
           });
           const currentNotes = currentNotesResponse.data.values?.[0]?.[0] || '';
-          const updatedNotes = currentNotes + '\n' + p.eodNotes;
-          
+          // Add blank line before new FUP entry
+          const updatedNotes = currentNotes + '\n\n' + p.eodNotes;
+
           // E = EOD Notes
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
@@ -213,7 +228,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             valueInputOption: 'USER_ENTERED',
             resource: { values: [[updatedNotes]] },
           });
-          
+
           // F = Last Effort
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
@@ -221,7 +236,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             valueInputOption: 'USER_ENTERED',
             resource: { values: [[date]] },
           });
-          
+
           // G = Next Follow Up Date
           if (p.nextFollowUpDate) {
             await sheets.spreadsheets.values.update({
@@ -231,7 +246,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
               resource: { values: [[p.nextFollowUpDate]] },
             });
           }
-          
+
           // H = Offered
           if (p.offered === 'Yes' || p.offered === 'No') {
             await sheets.spreadsheets.values.update({
@@ -251,7 +266,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
               resource: { values: [[p.suggestedTemp]] },
             });
           }
-          
+
           // J = Status - only if not null
           if (p.suggestedStatus) {
             await sheets.spreadsheets.values.update({
@@ -265,8 +280,12 @@ app.post('/api/save-to-sheets', async (req, res) => {
         } else {
           console.log(`FUP prospect not found in sheet: ${p.name}`);
         }
+
       } else {
-        // A=Date, B=Closer, C=Name, D=Setter, E=EOD Notes, F=Last Effort, G=Next FUP, H=Offered, I=Temp, J=Status, K=Notes
+        // New prospect - write to next row after last data row
+        lastDataRow++;
+        const targetRow = lastDataRow;
+
         const rowData = [
           date,
           closerName,
@@ -281,9 +300,9 @@ app.post('/api/save-to-sheets', async (req, res) => {
           ''
         ];
 
-        await sheets.spreadsheets.values.append({
+        await sheets.spreadsheets.values.update({
           spreadsheetId: SPREADSHEET_ID,
-          range: `'${tabName}'!A:K`,
+          range: `'${tabName}'!A${targetRow}:K${targetRow}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [rowData] },
         });
