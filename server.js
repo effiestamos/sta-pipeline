@@ -24,6 +24,16 @@ const CLOSERS = [
   'OWEN SAMMARONE'
 ];
 
+// Map full names to sheet dropdown values
+const CLOSER_DROPDOWN_MAP = {
+  'AMMAR ELMAHALAWY': 'Ammar',
+  'JACK WATSON': 'Jack',
+  'DAVE BATEMAN': 'Dave',
+  'FOX MACPHERSON': 'Fox',
+  'APOLO MENDOZA': 'Apolo',
+  'OWEN SAMMARONE': 'Owen'
+};
+
 const STATUS_OPTIONS = [
   'Closed', 'Deposit', 'DQ', 'FDQ',
   'Partner | Multiple Partners',
@@ -66,19 +76,47 @@ function applyFUPRules(prospect) {
   return prospect;
 }
 
-async function findLastDataRow(sheets, tabName) {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `'${tabName}'!A:A`,
-  });
-  const rows = response.data.values || [];
-  let lastRow = 1;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i] && rows[i][0] && rows[i][0].toString().trim() !== '') {
-      lastRow = i + 1;
-    }
+async function applyRowColor(sheets, tabName, rowIndex, status) {
+  let color = null;
+  if (status === 'Closed') {
+    color = { red: 0.851, green: 0.918, blue: 0.827 }; // #d9ead3
+  } else if (status === 'DQ' || status === 'FDQ') {
+    color = { red: 0.988, green: 0.898, blue: 0.804 }; // #fce5cd
   }
-  return lastRow;
+  
+  if (!color) return;
+
+  const sheetInfoResponse = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
+  
+  const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
+  if (!sheet) return;
+  
+  const sheetId = sheet.properties.sheetId;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    resource: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: rowIndex - 1,
+            endRowIndex: rowIndex,
+            startColumnIndex: 0,
+            endColumnIndex: 11
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: color
+            }
+          },
+          fields: 'userEnteredFormat.backgroundColor'
+        }
+      }]
+    }
+  });
 }
 
 app.get('/', (req, res) => {
@@ -112,8 +150,10 @@ WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Any entry with FUP right after the name: "Alan Ruchtein - FUP - RS"
 - Log all follow-ups even if RS, NS, or Cancelled
 
-EOD NOTES: Copy VERBATIM. Exact words. No changes. No cleanup.
-For follow-ups prefix with date: "5/8 EOD FUP - RS"
+EOD NOTES RULES:
+- For NEW prospects: prefix notes with date like "5/8 EOD" then the verbatim notes. Example: "5/8 EOD helps startups raise funds..."
+- For FOLLOW-UPS: prefix with date and FUP outcome like "5/8 EOD FUP - RS" then verbatim notes
+- Copy everything VERBATIM after the prefix. Exact words. No changes. No cleanup.
 
 OFFERS: Closed = Yes. "Didn't offer" = No. Trial mention = Yes.
 
@@ -130,7 +170,7 @@ Return ONLY valid JSON no markdown:
     {
       "name": "Name",
       "isFollowUp": false,
-      "eodNotes": "VERBATIM",
+      "eodNotes": "5/8 EOD verbatim notes here",
       "suggestedStatus": "status or null",
       "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
@@ -179,15 +219,14 @@ app.post('/api/save-to-sheets', async (req, res) => {
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     const tabName = closerName;
+    const closerShortName = CLOSER_DROPDOWN_MAP[closerName] || closerName;
 
-    // Get all existing data to build prospect row map
     const existingResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${tabName}'!A:K`,
     });
     const existingRows = existingResponse.data.values || [];
 
-    // Build map of prospect name -> row number
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
@@ -197,7 +236,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
       }
     });
 
-    // Find last row with actual data in column A
     let lastDataRow = 1;
     existingRows.forEach((row, index) => {
       if (row && row[0] && row[0].toString().trim() !== '') {
@@ -212,16 +250,13 @@ app.post('/api/save-to-sheets', async (req, res) => {
         const existingRowIndex = prospectRowMap[p.name.toLowerCase().trim()];
 
         if (existingRowIndex) {
-          // Get current EOD notes
           const currentNotesResponse = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!E${existingRowIndex}`,
           });
           const currentNotes = currentNotesResponse.data.values?.[0]?.[0] || '';
-          // Add blank line before new FUP entry
           const updatedNotes = currentNotes + '\n\n' + p.eodNotes;
 
-          // E = EOD Notes
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!E${existingRowIndex}`,
@@ -229,7 +264,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
             resource: { values: [[updatedNotes]] },
           });
 
-          // F = Last Effort
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!F${existingRowIndex}`,
@@ -237,7 +271,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
             resource: { values: [[date]] },
           });
 
-          // G = Next Follow Up Date
           if (p.nextFollowUpDate) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -247,7 +280,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
 
-          // H = Offered
           if (p.offered === 'Yes' || p.offered === 'No') {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -257,7 +289,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
 
-          // I = Temp - only if not null
           if (p.suggestedTemp) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -267,7 +298,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
 
-          // J = Status - only if not null
           if (p.suggestedStatus) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -275,20 +305,20 @@ app.post('/api/save-to-sheets', async (req, res) => {
               valueInputOption: 'USER_ENTERED',
               resource: { values: [[p.suggestedStatus]] },
             });
+            await applyRowColor(sheets, tabName, existingRowIndex, p.suggestedStatus);
           }
 
         } else {
-          console.log(`FUP prospect not found in sheet: ${p.name}`);
+          console.log(`FUP prospect not found: ${p.name}`);
         }
 
       } else {
-        // New prospect - write to next row after last data row
         lastDataRow++;
         const targetRow = lastDataRow;
 
         const rowData = [
           date,
-          closerName,
+          closerShortName,
           p.name + (p.email ? ` | ${p.email}` : ''),
           p.setter || '',
           p.eodNotes,
@@ -306,6 +336,10 @@ app.post('/api/save-to-sheets', async (req, res) => {
           valueInputOption: 'USER_ENTERED',
           resource: { values: [rowData] },
         });
+
+        if (p.suggestedStatus) {
+          await applyRowColor(sheets, tabName, targetRow, p.suggestedStatus);
+        }
       }
     }
 
