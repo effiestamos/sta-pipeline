@@ -144,7 +144,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     
-    const tabName = closerName.split(' ')[0].toUpperCase();
+    const tabName = closerName.toUpperCase();
     
     for (const prospect of prospects) {
       const rowData = [
