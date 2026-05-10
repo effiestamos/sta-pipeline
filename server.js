@@ -66,35 +66,60 @@ app.post('/api/parse-eod', async (req, res) => {
   }
 
   try {
-    const prompt = `You are a sales data extraction assistant. Parse this EOD (End of Day) report from closer "${closerName}" and extract structured data.
+    const prompt = `You are a sales data extraction assistant. Parse this EOD report from closer "${closerName}".
 
 EOD TEXT:
 ${eodText}
 
-RULES:
-1. Skip cancelled or no-show FIRST TIME calls entirely - do not include them in prospects array. Add them to skipped array with reason.
-2. Only include prospects where the FIRST TIME call actually happened.
-3. Always include follow-up calls even if they were NS or Cancelled - they are already in the pipeline.
-4. A follow-up call is identified by "FUP", "fup", "follow up", or "follow-up" appearing RIGHT AFTER the prospect name (e.g. "Grant - FUP - Closed" or "Juliana - fup - needs to sort..."). Do NOT treat "FUP" inside the notes/summary as a follow-up indicator.
-5. For closed deals, Offered is always "Yes".
-6. Temperature rules:
-   - If a follow-up is booked (even just "FUP next week"), temperature is minimum "Warm"
-   - "Super bought in" + FUP booked = offer was likely made, temp = "Warm" minimum
-   - FUP - RS (rescheduled): set suggestedTemp to null (no change)
-   - FUP - NS (no show): set suggestedTemp to "Cold"
-   - FUP - Cancelled: set suggestedTemp to "Cold"
-7. EOD notes must be VERBATIM - copy exactly as written including typos, profanity, and casual language. Do not clean up or paraphrase.
-8. For follow-up entries, prefix the eodNotes with the date like "5/8 EOD FUP - RS" before the rest of the notes.
-9. Extract the date from the EOD text. Format as M/D/YYYY.
-10. If stats show a FUP close but no closed prospect is named in EOD notes, add "MISSING_CLOSE" to globalFlags.
-11. If offer count in stats doesn't match confirmed offers from notes, add "OFFER_MISMATCH" to globalFlags.
-12. "Trial mention" or "got time closed before trial" implies main offer was made first - set offered to "Yes".
-13. FUP - RS means rescheduled - do NOT change status, set suggestedStatus to null.
+CRITICAL RULES FOR WHAT TO SKIP vs WHAT TO LOG:
+
+SKIP ENTIRELY (do not add to prospects, add to skipped array with reason):
+- First time calls that are RS (rescheduled) — e.g. "Que Jay - RS"
+- First time calls that are NS (no show) — e.g. "Karla - NS"  
+- First time calls that are Cancelled — e.g. "John - Cancelled"
+- Any first time call where the call did not actually happen
+
+LOG AS NEW PROSPECT (isFollowUp: false):
+- First time calls where the call actually happened and there are notes about the conversation
+
+LOG AS FOLLOW-UP (isFollowUp: true):
+- Any entry that has "FUP" right after the prospect name — e.g. "Alan Ruchtein - FUP - RS"
+- Follow-up calls get appended to the existing prospect row in the sheet
+- Follow-up calls are logged even if they were RS, NS, or Cancelled
+
+TEMPERATURE RULES FOR FOLLOW-UPS:
+- FUP - RS (rescheduled): suggestedTemp = null (no change to existing temp)
+- FUP - NS (no show): suggestedTemp = "Cold"
+- FUP - Cancelled: suggestedTemp = "Cold"
+- FUP with live conversation and FUP booked: suggestedTemp = "Warm" minimum
+
+STATUS RULES FOR FOLLOW-UPS:
+- FUP - RS: suggestedStatus = null (no change)
+- FUP - NS: suggestedStatus = null (no change)
+- FUP - Cancelled: suggestedStatus = null (no change)
+- FUP - Closed: suggestedStatus = "Closed"
+- FUP with live conversation: suggest appropriate status based on notes
+
+TEMPERATURE RULES FOR NEW PROSPECTS:
+- FUP booked = minimum "Warm"
+- "Super bought in" + FUP booked = "Warm" minimum
+- DQ or FDQ = "Cold"
+- Cancelled or NS = skip entirely
+
+OFFER RULES:
+- Closed deals: offered = "Yes" always
+- "Trial mention" or "got time closed before trial": offered = "Yes"
+- "Didn't offer": offered = "No"
+- Cross-check offers made in stats against prospects
+
+EOD NOTES RULES:
+- Copy notes VERBATIM - exact words, typos, profanity, casual language - do not change anything
+- For follow-up entries prefix with date: "5/8 EOD FUP - RS" then the rest verbatim
 
 STATUS OPTIONS: ${STATUS_OPTIONS.join(', ')}
-TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')} or null for no change
+TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')} or null
 
-Return ONLY valid JSON with no markdown formatting:
+Return ONLY valid JSON no markdown:
 {
   "date": "M/D/YYYY",
   "closer": "${closerName}",
@@ -102,9 +127,9 @@ Return ONLY valid JSON with no markdown formatting:
     {
       "name": "Prospect Full Name",
       "isFollowUp": false,
-      "eodNotes": "VERBATIM notes exactly as written",
-      "suggestedStatus": "one of STATUS_OPTIONS or null",
-      "suggestedTemp": "one of TEMP_OPTIONS or null",
+      "eodNotes": "VERBATIM notes",
+      "suggestedStatus": "status or null",
+      "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
       "nextFollowUpDate": "M/D/YYYY or null",
       "setter": "setter name or null",
@@ -152,7 +177,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
     const sheets = google.sheets({ version: 'v4', auth });
     const tabName = closerName;
 
-    // Get existing data to find prospect rows for FUPs
     const existingResponse = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `'${tabName}'!A:K`,
@@ -160,7 +184,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
     
     const existingRows = existingResponse.data.values || [];
     
-    // Build prospect name to row index map
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
@@ -175,7 +198,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
         const existingRowIndex = prospectRowMap[prospect.name.toLowerCase().trim()];
         
         if (existingRowIndex) {
-          // Get current EOD notes
           const currentNotesResponse = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!E${existingRowIndex}`,
@@ -183,7 +205,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
           const currentNotes = currentNotesResponse.data.values?.[0]?.[0] || '';
           const updatedNotes = currentNotes + '\n' + prospect.eodNotes;
           
-          // Update EOD notes (Column E)
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!E${existingRowIndex}`,
@@ -191,7 +212,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             resource: { values: [[updatedNotes]] },
           });
           
-          // Update Last Effort date (Column F)
+          // F = Last Effort
           await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `'${tabName}'!F${existingRowIndex}`,
@@ -199,7 +220,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             resource: { values: [[date]] },
           });
           
-          // Update Next Follow Up Date (Column G) if provided
+          // G = Next Follow Up Date
           if (prospect.nextFollowUpDate) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -209,7 +230,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
           
-          // Update Offered (Column H) if known
+          // H = Offered
           if (prospect.offered === 'Yes' || prospect.offered === 'No') {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -219,7 +240,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
 
-          // Update Temp (Column I) only if suggestedTemp is not null
+          // I = Temp - only update if not null
           if (prospect.suggestedTemp) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -229,7 +250,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
             });
           }
           
-          // Update Status (Column J) only if suggestedStatus is not null
+          // J = Status - only update if not null
           if (prospect.suggestedStatus) {
             await sheets.spreadsheets.values.update({
               spreadsheetId: SPREADSHEET_ID,
@@ -240,24 +261,22 @@ app.post('/api/save-to-sheets', async (req, res) => {
           }
 
         } else {
-          // Prospect not found - flag it
           console.log(`FUP prospect not found in sheet: ${prospect.name}`);
         }
       } else {
-        // New prospect - append new row
-        // Column order: A=Date, B=Closer, C=Prospect Name, D=Setter, E=EOD Notes, F=Last Effort, G=Next FUP Date, H=Offered, I=Temp, J=Status, K=Notes
+        // A=Date, B=Closer, C=Name, D=Setter, E=EOD Notes, F=Last Effort, G=Next FUP, H=Offered, I=Temp, J=Status, K=Notes
         const rowData = [
-          date,                                                                    // A - Date of Call
-          closerName,                                                              // B - Closer
-          prospect.name + (prospect.email ? ` | ${prospect.email}` : ''),        // C - Prospect Name
-          prospect.setter || '',                                                   // D - Setter
-          prospect.eodNotes,                                                       // E - EOD Notes
-          date,                                                                    // F - Last Effort (same as date of call for new prospects)
-          prospect.nextFollowUpDate || '',                                         // G - Next Follow Up Date
-          prospect.offered === 'Yes' ? 'YES' : prospect.offered === 'No' ? 'NO' : '',  // H - Offered
-          prospect.suggestedTemp || '',                                            // I - Temp
-          prospect.suggestedStatus || '',                                          // J - Status
-          ''                                                                       // K - Notes
+          date,
+          closerName,
+          prospect.name + (prospect.email ? ` | ${prospect.email}` : ''),
+          prospect.setter || '',
+          prospect.eodNotes,
+          date,
+          prospect.nextFollowUpDate || '',
+          prospect.offered === 'Yes' ? 'YES' : prospect.offered === 'No' ? 'NO' : '',
+          prospect.suggestedTemp || '',
+          prospect.suggestedStatus || '',
+          ''
         ];
 
         await sheets.spreadsheets.values.append({
