@@ -218,11 +218,12 @@ EOD TEXT:
 ${eodText}
 
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
-- First time calls that are RS, NS, or Cancelled — the call never happened
-- Examples: "Que Jay - RS", "Karla - NS", "John - Cancelled"
+- First time calls that are RS, NS, or Cancelled
+- Calls that were "handed off" to someone else - the call did not happen with this closer
+- Examples: "Que Jay - RS", "Karla - NS", "John - Cancelled", "Gabriela - handed off"
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
-- First time calls where the call actually happened and closer wrote notes
+- First time calls where the call actually happened and closer wrote notes about the conversation
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Any entry with FUP right after the name: "Alan Ruchtein - FUP - RS"
@@ -235,14 +236,24 @@ EOD NOTES RULES:
 
 FOLLOW-UP DATE RULES:
 - If exact date given: use that date in M/D/YYYY format
-- If "next week" or vague future date with no specific date: set nextFollowUpDate to "NEXT_WEEK"
-- If no follow-up mentioned: null
+- If "next week" or vague future with approximate timing: set to "NEXT_WEEK"
+- If only "will nurture", "ULLP", "sending resources", no specific follow up mentioned: set to "NURTURE"
+- If no follow-up mentioned at all: null
 
-OFFERS: Closed = Yes. "Didn't offer" = No. Trial mention = Yes.
+TEMPERATURE RULES:
+- 🔥🔥🔥 = ONLY for closed deals. Never use for anything else.
+- Hot = verbal yes, reviewing contract, paying tomorrow/in 2 days/end of week, on the verge of closing, imminent payment
+- Warm = FUP booked, bought in but has an objection, interested and engaged
+- Cool = some interest but slowing down, less responsive, DQ sent to ULLP
+- Cold = DQ, FDQ, NS, Cancelled, not interested
 
-Extract date from EOD. Format M/D/YYYY.
+OFFER RULES:
+- Closed = Yes always
+- "Didn't offer" = No
+- "Pitched trial" or trial mention = Yes (trial implies main offer was made first)
+- "Gave coaching" or "ULLP" without pitching = No
 
-STATUS OPTIONS (use EXACTLY as written, copy emoji too):
+STATUS OPTIONS (use EXACTLY as written including emojis):
 CLOSED👍🏼
 Deposit 💵 Referral
 DQ
@@ -260,7 +271,7 @@ Re-offer
 Burned 🚒
 Refund
 
-TEMP OPTIONS: ${TEMP_OPTIONS.join(', ')}
+TEMP OPTIONS: Cold, Cool, Warm, Hot, 🔥🔥🔥
 
 Return ONLY valid JSON no markdown:
 {
@@ -271,10 +282,10 @@ Return ONLY valid JSON no markdown:
       "name": "Name",
       "isFollowUp": false,
       "eodNotes": "5/8 EOD verbatim notes",
-      "suggestedStatus": "exact status from list above or null",
+      "suggestedStatus": "exact status from list or null",
       "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
-      "nextFollowUpDate": "M/D/YYYY or NEXT_WEEK or null",
+      "nextFollowUpDate": "M/D/YYYY or NEXT_WEEK or NURTURE or null",
       "setter": "name or null",
       "email": "",
       "flags": []
@@ -305,15 +316,15 @@ Return ONLY valid JSON no markdown:
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
-    // Process NEXT_WEEK dates and map statuses
     parsed.prospects = parsed.prospects.map(p => {
-      // Map status to exact sheet value
       p.suggestedStatus = mapStatus(p.suggestedStatus);
-      
-      // Handle approximate dates
+
       if (p.nextFollowUpDate === 'NEXT_WEEK') {
         const parts = parsed.date.split('/');
         p.nextFollowUpDate = `${parts[0]}/?/${parts[2]}`;
+        p.nextFollowUpDateIsApprox = true;
+      } else if (p.nextFollowUpDate === 'NURTURE') {
+        p.nextFollowUpDate = '?';
         p.nextFollowUpDateIsApprox = true;
       }
       return p;
@@ -360,7 +371,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
 
     for (const prospect of prospects) {
       const p = applyFUPRules(prospect);
-      // Re-map status in case frontend changed it
       p.suggestedStatus = mapStatus(p.suggestedStatus);
       const isApproxDate = p.nextFollowUpDate && p.nextFollowUpDate.includes('?');
 
