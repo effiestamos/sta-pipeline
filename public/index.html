@@ -13,21 +13,25 @@
   .card { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
   .card h2 { font-size: 15px; font-weight: 500; margin-bottom: 1rem; color: #444; }
   label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
-  select, textarea, input { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  select, textarea, input[type="text"], input[type="email"], input[type="date"] { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
   select { height: 38px; }
-  textarea { resize: vertical; min-height: 200px; }
+  textarea { resize: vertical; min-height: 80px; }
   .btn { padding: 9px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
   .btn-primary { background: #1a1a2e; color: white; }
   .btn-success { background: #1D9E75; color: white; }
+  .btn-add { background: #4A90D9; color: white; font-size: 13px; padding: 7px 14px; }
   .btn-primary:disabled, .btn-success:disabled { background: #ccc; cursor: not-allowed; }
-  .prospect-card { border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-bottom: 10px; }
+  .prospect-card { border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-bottom: 10px; position: relative; }
   .prospect-card.closed { border-left: 4px solid #1D9E75; background: #f0faf5; }
   .prospect-card.dq { border-left: 4px solid #f5a623; background: #fff9f0; }
-  .prospect-name { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  .prospect-card.manual { border: 2px dashed #4A90D9; background: #f0f7ff; }
+  .remove-btn { position: absolute; top: 10px; right: 10px; background: #e53e3e; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  .prospect-name { font-size: 15px; font-weight: 500; margin-bottom: 6px; padding-right: 30px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; display: inline-block; margin-right: 4px; margin-bottom: 6px; }
   .badge-new { background: #E6F1FB; color: #0C447C; }
   .badge-fup { background: #EEEDFE; color: #3C3489; }
   .badge-closed { background: #EAF3DE; color: #27500A; }
+  .badge-manual { background: #BEE3F8; color: #2A69AC; }
   .eod-notes { font-size: 12px; color: #555; background: #f9f9f9; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
   .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
@@ -45,6 +49,8 @@
   .error { background: #FCEBEB; color: #791F1F; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
   .fup-info { font-size: 12px; color: #666; margin-top: 4px; }
   .actions { display: flex; gap: 10px; align-items: center; margin-top: 1rem; }
+  .add-section { border: 2px dashed #4A90D9; border-radius: 8px; padding: 1rem; margin-bottom: 10px; background: #f0f7ff; }
+  .add-section h3 { font-size: 13px; font-weight: 500; color: #2A69AC; margin-bottom: 10px; }
   #results { display: none; }
 </style>
 </head>
@@ -65,7 +71,7 @@
     </div>
     <div class="field">
       <label>EOD Text (paste from Telegram)</label>
-      <textarea id="eodText" placeholder="Paste the raw EOD text here..."></textarea>
+      <textarea id="eodText" placeholder="Paste the raw EOD text here..." style="min-height:200px;"></textarea>
     </div>
     <button class="btn btn-primary" id="parseBtn" onclick="parseEOD()">Process EOD</button>
     <div id="parseStatus"></div>
@@ -73,7 +79,7 @@
 
   <div id="results">
     <div class="card" id="skippedSection" style="display:none;">
-      <h2>Skipped — cancelled first-time calls</h2>
+      <h2>Skipped — calls not logged</h2>
       <div id="skippedList"></div>
     </div>
 
@@ -85,6 +91,9 @@
       <h2>Prospects to log</h2>
       <div id="statsNote" style="margin-bottom:10px;"></div>
       <div id="prospectsList"></div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-add" onclick="addManualProspect()">+ Add prospect manually</button>
+      </div>
     </div>
 
     <div class="card">
@@ -119,11 +128,12 @@ const STATUS_OPTIONS = [
   'Burned 🚒',
   'Refund'
 ];
-
 const TEMP_OPTIONS = ['Cold','Cool','Warm','Hot','🔥🔥🔥'];
 
 let parsedData = null;
 let hasMissingClose = false;
+let manualCount = 0;
+let removedIndices = new Set();
 
 async function loadClosers() {
   const res = await fetch('/api/closers');
@@ -147,6 +157,8 @@ async function parseEOD() {
   document.getElementById('parseBtn').disabled = true;
   document.getElementById('parseStatus').innerHTML = '<div class="loading">Parsing EOD with AI... this takes about 15 seconds...</div>';
   document.getElementById('results').style.display = 'none';
+  removedIndices = new Set();
+  manualCount = 0;
 
   try {
     const res = await fetch('/api/parse-eod', {
@@ -188,13 +200,74 @@ function makeOfferedSelect(id, offered) {
   </select>`;
 }
 
-function isClosedStatus(status) {
-  return status === 'CLOSED👍🏼';
+function makeCallTypeSelect(id, isFollowUp) {
+  return `<select id="${id}">
+    <option value="false" ${!isFollowUp ? 'selected' : ''}>New call</option>
+    <option value="true" ${isFollowUp ? 'selected' : ''}>Follow-up</option>
+  </select>`;
 }
 
-function isDQStatus(status) {
-  return status === 'DQ' || status === 'FDQ';
+function removeProspect(index) {
+  const card = document.getElementById(`prospect-card-${index}`);
+  if (card) card.remove();
+  removedIndices.add(index);
 }
+
+function addManualProspect() {
+  const id = `manual-${manualCount++}`;
+  const list = document.getElementById('prospectsList');
+  const div = document.createElement('div');
+  div.className = 'prospect-card manual';
+  div.id = `prospect-card-${id}`;
+  div.innerHTML = `
+    <button class="remove-btn" onclick="removeProspect('${id}')">×</button>
+    <div class="prospect-name">
+      <span class="badge badge-manual">Manual entry</span>
+    </div>
+    <div class="grid-2" style="margin-bottom:8px;">
+      <div>
+        <label>Prospect name</label>
+        <input type="text" id="name-${id}" placeholder="Full name...">
+      </div>
+      <div>
+        <label>Call type</label>
+        ${makeCallTypeSelect(`calltype-${id}`, false)}
+      </div>
+    </div>
+    <div class="field">
+      <label>EOD Notes</label>
+      <textarea id="notes-${id}" placeholder="Enter EOD notes..."></textarea>
+    </div>
+    <div class="grid-3">
+      <div>
+        <label>Temp</label>
+        ${makeTempSelect(`temp-${id}`, null)}
+      </div>
+      <div>
+        <label>Status</label>
+        ${makeStatusSelect(`status-${id}`, null)}
+      </div>
+      <div>
+        <label>Offered?</label>
+        ${makeOfferedSelect(`offered-${id}`, null)}
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <label>Setter (if any)</label>
+        <input type="text" id="setter-${id}" placeholder="Setter name...">
+      </div>
+      <div>
+        <label>Next follow-up date</label>
+        <input type="text" id="fupdate-${id}" placeholder="e.g. 5/15/2026">
+      </div>
+    </div>
+  `;
+  list.appendChild(div);
+}
+
+function isClosedStatus(status) { return status === 'CLOSED👍🏼'; }
+function isDQStatus(status) { return status === 'DQ'; }
 
 function renderResults(data) {
   hasMissingClose = false;
@@ -212,7 +285,7 @@ function renderResults(data) {
     document.getElementById('globalFlags').innerHTML = data.globalFlags.map(f => {
       if (f.includes('MISSING_CLOSE')) {
         hasMissingClose = true;
-        return `<div class="flag-red">⛔ Stats show a FUP close but no closed prospect is named in the EOD notes. Check the STA Sales channel, then enter the prospect name below.<br>
+        return `<div class="flag-red">⛔ ${f}<br>
         <input type="text" id="missingCloseName" placeholder="Type prospect name here..."></div>`;
       }
       return `<div class="flag">⚑ ${f}</div>`;
@@ -239,7 +312,8 @@ function renderResults(data) {
     const flagsHtml = (p.flags || []).map(f => `<div class="flag">⚑ ${f}</div>`).join('');
 
     list.innerHTML += `
-      <div class="prospect-card ${cardClass}" id="prospect-${i}">
+      <div class="prospect-card ${cardClass}" id="prospect-card-${i}">
+        <button class="remove-btn" onclick="removeProspect(${i})">×</button>
         <div class="prospect-name">${p.name} ${rowColorNote}
           <span class="badge ${p.isFollowUp ? 'badge-fup' : 'badge-new'}">${p.isFollowUp ? 'Follow-up' : 'New call'}</span>
           ${isClosed ? '<span class="badge badge-closed">Closed</span>' : ''}
@@ -247,28 +321,13 @@ function renderResults(data) {
         ${flagsHtml}
         <div class="eod-notes">${p.eodNotes}</div>
         <div class="grid-3">
-          <div>
-            <label>Temp</label>
-            ${makeTempSelect(`temp-${i}`, p.suggestedTemp)}
-          </div>
-          <div>
-            <label>Status</label>
-            ${makeStatusSelect(`status-${i}`, p.suggestedStatus)}
-          </div>
-          <div>
-            <label>Offered?</label>
-            ${makeOfferedSelect(`offered-${i}`, p.offered)}
-          </div>
+          <div><label>Temp</label>${makeTempSelect(`temp-${i}`, p.suggestedTemp)}</div>
+          <div><label>Status</label>${makeStatusSelect(`status-${i}`, p.suggestedStatus)}</div>
+          <div><label>Offered?</label>${makeOfferedSelect(`offered-${i}`, p.offered)}</div>
         </div>
         <div class="grid-2">
-          <div>
-            <label>Setter (if any)</label>
-            <input type="text" id="setter-${i}" value="${p.setter || ''}" placeholder="Setter name...">
-          </div>
-          <div>
-            <label>Prospect email (optional)</label>
-            <input type="email" id="email-${i}" placeholder="email@example.com">
-          </div>
+          <div><label>Setter (if any)</label><input type="text" id="setter-${i}" value="${p.setter || ''}" placeholder="Setter name..."></div>
+          <div><label>Prospect email (optional)</label><input type="email" id="email-${i}" placeholder="email@example.com"></div>
         </div>
         ${p.nextFollowUpDate ? `<div class="fup-info">Next follow-up: <strong>${p.nextFollowUpDate}</strong></div>` : ''}
       </div>`;
@@ -306,18 +365,48 @@ function updateApproveButton() {
 async function saveToSheets() {
   if (!parsedData) return;
 
-  const prospects = parsedData.prospects.map((p, i) => ({
-    name: p.name,
-    email: document.getElementById(`email-${i}`).value,
-    isFollowUp: p.isFollowUp,
-    eodNotes: p.eodNotes,
-    suggestedStatus: document.getElementById(`status-${i}`).value || null,
-    suggestedTemp: document.getElementById(`temp-${i}`).value || null,
-    offered: document.getElementById(`offered-${i}`).value,
-    nextFollowUpDate: p.nextFollowUpDate,
-    setter: document.getElementById(`setter-${i}`).value,
-  }));
+  // Collect AI-parsed prospects (excluding removed ones)
+  const prospects = [];
+  parsedData.prospects.forEach((p, i) => {
+    if (removedIndices.has(i)) return;
+    const statusEl = document.getElementById(`status-${i}`);
+    const tempEl = document.getElementById(`temp-${i}`);
+    const offeredEl = document.getElementById(`offered-${i}`);
+    if (!statusEl) return;
+    prospects.push({
+      name: p.name,
+      email: document.getElementById(`email-${i}`)?.value || '',
+      isFollowUp: p.isFollowUp,
+      eodNotes: p.eodNotes,
+      suggestedStatus: statusEl.value || null,
+      suggestedTemp: tempEl.value || null,
+      offered: offeredEl.value,
+      nextFollowUpDate: p.nextFollowUpDate,
+      setter: document.getElementById(`setter-${i}`)?.value || '',
+    });
+  });
 
+  // Collect manual prospects
+  for (let m = 0; m < manualCount; m++) {
+    const id = `manual-${m}`;
+    const card = document.getElementById(`prospect-card-${id}`);
+    if (!card) continue; // was removed
+    const nameEl = document.getElementById(`name-${id}`);
+    if (!nameEl || !nameEl.value.trim()) continue;
+    prospects.push({
+      name: nameEl.value.trim(),
+      email: '',
+      isFollowUp: document.getElementById(`calltype-${id}`)?.value === 'true',
+      eodNotes: document.getElementById(`notes-${id}`)?.value || '',
+      suggestedStatus: document.getElementById(`status-${id}`)?.value || null,
+      suggestedTemp: document.getElementById(`temp-${id}`)?.value || null,
+      offered: document.getElementById(`offered-${id}`)?.value || '',
+      nextFollowUpDate: document.getElementById(`fupdate-${id}`)?.value || null,
+      setter: document.getElementById(`setter-${id}`)?.value || '',
+    });
+  }
+
+  // Handle missing close
   if (hasMissingClose) {
     const missingName = document.getElementById('missingCloseName')?.value;
     if (!missingName) {

@@ -1,115 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>STA Sales Pipeline</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
-  .header { background: #1a1a2e; color: white; padding: 1rem 2rem; }
-  .header h1 { font-size: 18px; font-weight: 500; }
-  .container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
-  .card { background: white; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  .card h2 { font-size: 15px; font-weight: 500; margin-bottom: 1rem; color: #444; }
-  label { font-size: 12px; color: #666; display: block; margin-bottom: 4px; }
-  select, textarea, input[type="text"], input[type="email"], input[type="date"] { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
-  select { height: 38px; }
-  textarea { resize: vertical; min-height: 80px; }
-  .btn { padding: 9px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; }
-  .btn-primary { background: #1a1a2e; color: white; }
-  .btn-success { background: #1D9E75; color: white; }
-  .btn-add { background: #4A90D9; color: white; font-size: 13px; padding: 7px 14px; }
-  .btn-primary:disabled, .btn-success:disabled { background: #ccc; cursor: not-allowed; }
-  .prospect-card { border: 1px solid #eee; border-radius: 8px; padding: 1rem; margin-bottom: 10px; position: relative; }
-  .prospect-card.closed { border-left: 4px solid #1D9E75; background: #f0faf5; }
-  .prospect-card.dq { border-left: 4px solid #f5a623; background: #fff9f0; }
-  .prospect-card.manual { border: 2px dashed #4A90D9; background: #f0f7ff; }
-  .remove-btn { position: absolute; top: 10px; right: 10px; background: #e53e3e; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
-  .prospect-name { font-size: 15px; font-weight: 500; margin-bottom: 6px; padding-right: 30px; }
-  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; display: inline-block; margin-right: 4px; margin-bottom: 6px; }
-  .badge-new { background: #E6F1FB; color: #0C447C; }
-  .badge-fup { background: #EEEDFE; color: #3C3489; }
-  .badge-closed { background: #EAF3DE; color: #27500A; }
-  .badge-manual { background: #BEE3F8; color: #2A69AC; }
-  .eod-notes { font-size: 12px; color: #555; background: #f9f9f9; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-  .field { margin-bottom: 8px; }
-  .flag { background: #FAEEDA; color: #633806; border-radius: 6px; font-size: 12px; padding: 6px 10px; margin-bottom: 8px; }
-  .flag-red { background: #FCEBEB; color: #791F1F; border-radius: 6px; font-size: 12px; padding: 6px 10px; margin-bottom: 8px; }
-  .flag-red input { margin-top: 6px; border-color: #A32D2D; }
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
-  .stat-box { background: #f9f9f9; border-radius: 6px; padding: 10px; text-align: center; }
-  .stat-val { font-size: 22px; font-weight: 600; color: #1a1a2e; }
-  .stat-lbl { font-size: 11px; color: #666; margin-top: 2px; line-height: 1.3; }
-  .skipped-item { background: #f5f5f5; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; color: #666; }
-  .loading { text-align: center; padding: 2rem; color: #666; }
-  .success { background: #EAF3DE; color: #27500A; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
-  .error { background: #FCEBEB; color: #791F1F; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
-  .fup-info { font-size: 12px; color: #666; margin-top: 4px; }
-  .actions { display: flex; gap: 10px; align-items: center; margin-top: 1rem; }
-  .add-section { border: 2px dashed #4A90D9; border-radius: 8px; padding: 1rem; margin-bottom: 10px; background: #f0f7ff; }
-  .add-section h3 { font-size: 13px; font-weight: 500; color: #2A69AC; margin-bottom: 10px; }
-  #results { display: none; }
-</style>
-</head>
-<body>
+const express = require('express');
+const cors = require('cors');
+const { google } = require('googleapis');
+const Anthropic = require('@anthropic-ai/sdk');
+const path = require('path');
 
-<div class="header">
-  <h1>STA Sales Pipeline — EOD Parser</h1>
-</div>
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
 
-<div class="container">
-  <div class="card">
-    <h2>Paste EOD Report</h2>
-    <div class="field">
-      <label>Closer</label>
-      <select id="closerSelect">
-        <option value="">Select closer...</option>
-      </select>
-    </div>
-    <div class="field">
-      <label>EOD Text (paste from Telegram)</label>
-      <textarea id="eodText" placeholder="Paste the raw EOD text here..." style="min-height:200px;"></textarea>
-    </div>
-    <button class="btn btn-primary" id="parseBtn" onclick="parseEOD()">Process EOD</button>
-    <div id="parseStatus"></div>
-  </div>
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-  <div id="results">
-    <div class="card" id="skippedSection" style="display:none;">
-      <h2>Skipped — calls not logged</h2>
-      <div id="skippedList"></div>
-    </div>
+const SPREADSHEET_ID = '11YuQ4xweAflQmiREbaC1IbC_8heTt9UN3FHQy-ry0EE';
 
-    <div class="card" id="flagsSection" style="display:none;">
-      <div id="globalFlags"></div>
-    </div>
+const CLOSERS = [
+  'AMMAR ELMAHALAWY',
+  'JACK WATSON',
+  'DAVE BATEMAN',
+  'FOX MACPHERSON',
+  'APOLO MENDOZA',
+  'OWEN SAMMARONE'
+];
 
-    <div class="card">
-      <h2>Prospects to log</h2>
-      <div id="statsNote" style="margin-bottom:10px;"></div>
-      <div id="prospectsList"></div>
-      <div style="margin-top:12px;">
-        <button class="btn btn-add" onclick="addManualProspect()">+ Add prospect manually</button>
-      </div>
-    </div>
+const CLOSER_DROPDOWN_MAP = {
+  'AMMAR ELMAHALAWY': 'Ammar',
+  'JACK WATSON': 'Jack',
+  'DAVE BATEMAN': 'Dave',
+  'FOX MACPHERSON': 'Fox',
+  'APOLO MENDOZA': 'Apolo',
+  'OWEN SAMMARONE': 'Owen'
+};
 
-    <div class="card">
-      <h2>Stats — Sales Compass</h2>
-      <div class="stats-grid" id="statsGrid"></div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-success" id="approveBtn" onclick="saveToSheets()">Approve & save to pipeline</button>
-      <span id="approveStatus" style="font-size:13px;color:#791F1F;"></span>
-    </div>
-    <div id="saveResult"></div>
-  </div>
-</div>
-
-<script>
 const STATUS_OPTIONS = [
   'CLOSED👍🏼',
   'Deposit 💵 Referral',
@@ -128,328 +51,524 @@ const STATUS_OPTIONS = [
   'Burned 🚒',
   'Refund'
 ];
-const TEMP_OPTIONS = ['Cold','Cool','Warm','Hot','🔥🔥🔥'];
 
-let parsedData = null;
-let hasMissingClose = false;
-let manualCount = 0;
-let removedIndices = new Set();
+const STATUS_MAP = {
+  'closed': 'CLOSED👍🏼',
+  'close': 'CLOSED👍🏼',
+  'won': 'CLOSED👍🏼',
+  'closed👍🏼': 'CLOSED👍🏼',
+  'deposit': 'Deposit 💵 Referral',
+  'deposit 💵 referral': 'Deposit 💵 Referral',
+  'dq': 'DQ',
+  'fdq': 'FDQ',
+  'financially dq': 'FDQ',
+  'financially dqd': 'FDQ',
+  "financially dq'd": 'FDQ',
+  'partner | multiple partners': 'Partner | Multiple Partners',
+  'partner/multiple partners': 'Partner | Multiple Partners',
+  'sticker shock | investment issue': 'Sticker Shock | Investment Issue',
+  'sticker shock': 'Sticker Shock | Investment Issue',
+  'iffy / feeling it out / not sure': 'Iffy / Feeling it Out / Not Sure',
+  'iffy/feeling it out/not sure': 'Iffy / Feeling it Out / Not Sure',
+  'iffy': 'Iffy / Feeling it Out / Not Sure',
+  'dim - do it myself': 'DIM - do it myself',
+  'dim': 'DIM - do it myself',
+  'fact finder/coaching/researching': 'Fact Finder/Coaching/Researching',
+  'fact finder / coaching / researching': 'Fact Finder/Coaching/Researching',
+  'fact finder': 'Fact Finder/Coaching/Researching',
+  'timing/logistics': 'Timing/Logistics',
+  'timing / logistics': 'Timing/Logistics',
+  'timing': 'Timing/Logistics',
+  'need to pitch/offer': 'Need to pitch/offer',
+  'need to pitch / offer': 'Need to pitch/offer',
+  'need to pitch': 'Need to pitch/offer',
+  'not moving forward': 'Not Moving Forward',
+  'y - long follow up': 'Y - Long follow up',
+  'y - long follow-up': 'Y - Long follow up',
+  'long follow up': 'Y - Long follow up',
+  're-offer': 'Re-offer',
+  'reoffer': 'Re-offer',
+  'burned': 'Burned 🚒',
+  'burned 🚒': 'Burned 🚒',
+  'refund': 'Refund'
+};
 
-async function loadClosers() {
-  const res = await fetch('/api/closers');
-  const closers = await res.json();
-  const sel = document.getElementById('closerSelect');
-  closers.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c;
-    opt.textContent = c;
-    sel.appendChild(opt);
+const TEMP_OPTIONS = ['Cold', 'Cool', 'Warm', 'Hot', '🔥🔥🔥'];
+
+function getGoogleAuth() {
+  const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
+  return auth;
 }
 
-async function parseEOD() {
-  const closer = document.getElementById('closerSelect').value;
-  const eodText = document.getElementById('eodText').value;
-  if (!closer || !eodText) {
-    document.getElementById('parseStatus').innerHTML = '<div class="error">Please select a closer and paste the EOD text.</div>';
-    return;
+function mapStatus(status) {
+  if (!status) return null;
+  const mapped = STATUS_MAP[status.toLowerCase().trim()];
+  return mapped || status;
+}
+
+function applyFUPRules(prospect) {
+  if (!prospect.isFollowUp) return prospect;
+  const notes = (prospect.eodNotes || '').toUpperCase();
+  const isRS = notes.includes('FUP - RS') || notes.includes('FUP-RS');
+  const isNS = notes.includes('FUP - NS') || notes.includes('FUP-NS');
+  const isCancelled = notes.includes('FUP - CANCELLED') || notes.includes('FUP - CANCELED');
+  if (isRS) {
+    prospect.suggestedTemp = null;
+    prospect.suggestedStatus = null;
+  } else if (isNS || isCancelled) {
+    prospect.suggestedTemp = 'Cold';
+    prospect.suggestedStatus = null;
   }
-  document.getElementById('parseBtn').disabled = true;
-  document.getElementById('parseStatus').innerHTML = '<div class="loading">Parsing EOD with AI... this takes about 15 seconds...</div>';
-  document.getElementById('results').style.display = 'none';
-  removedIndices = new Set();
-  manualCount = 0;
+  return prospect;
+}
 
-  try {
-    const res = await fetch('/api/parse-eod', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eodText, closerName: closer })
-    });
-    parsedData = await res.json();
-    if (parsedData.error) throw new Error(parsedData.error);
-    renderResults(parsedData);
-    document.getElementById('parseStatus').innerHTML = '';
-  } catch(e) {
-    document.getElementById('parseStatus').innerHTML = `<div class="error">Error: ${e.message}</div>`;
+function calculateFollowUpDate(eodDate, dayMention) {
+  const parts = eodDate.split('/');
+  const baseDate = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+  
+  const dayMap = {
+    'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
+    'friday': 5, 'saturday': 6, 'sunday': 0,
+    'tomorrow': null, 'next week': null
+  };
+
+  const lower = dayMention.toLowerCase().trim();
+  
+  if (lower === 'tomorrow') {
+    const tomorrow = new Date(baseDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}/${tomorrow.getFullYear()}`;
   }
-  document.getElementById('parseBtn').disabled = false;
-}
-
-function makeStatusSelect(id, suggested) {
-  const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
-  const opts = STATUS_OPTIONS.map(s =>
-    `<option value="${s}" ${s === suggested ? 'selected' : ''}>${s}</option>`
-  ).join('');
-  return `<select id="${id}">${blank}${opts}</select>`;
-}
-
-function makeTempSelect(id, suggested) {
-  const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
-  const opts = TEMP_OPTIONS.map(t =>
-    `<option value="${t}" ${t === suggested ? 'selected' : ''}>${t}</option>`
-  ).join('');
-  return `<select id="${id}">${blank}${opts}</select>`;
-}
-
-function makeOfferedSelect(id, offered) {
-  return `<select id="${id}">
-    <option value="" ${!offered || offered === 'Unknown' ? 'selected' : ''}>—</option>
-    <option value="Yes" ${offered === 'Yes' ? 'selected' : ''}>Yes</option>
-    <option value="No" ${offered === 'No' ? 'selected' : ''}>No</option>
-  </select>`;
-}
-
-function makeCallTypeSelect(id, isFollowUp) {
-  return `<select id="${id}">
-    <option value="false" ${!isFollowUp ? 'selected' : ''}>New call</option>
-    <option value="true" ${isFollowUp ? 'selected' : ''}>Follow-up</option>
-  </select>`;
-}
-
-function removeProspect(index) {
-  const card = document.getElementById(`prospect-card-${index}`);
-  if (card) card.remove();
-  removedIndices.add(index);
-}
-
-function addManualProspect() {
-  const id = `manual-${manualCount++}`;
-  const list = document.getElementById('prospectsList');
-  const div = document.createElement('div');
-  div.className = 'prospect-card manual';
-  div.id = `prospect-card-${id}`;
-  div.innerHTML = `
-    <button class="remove-btn" onclick="removeProspect('${id}')">×</button>
-    <div class="prospect-name">
-      <span class="badge badge-manual">Manual entry</span>
-    </div>
-    <div class="grid-2" style="margin-bottom:8px;">
-      <div>
-        <label>Prospect name</label>
-        <input type="text" id="name-${id}" placeholder="Full name...">
-      </div>
-      <div>
-        <label>Call type</label>
-        ${makeCallTypeSelect(`calltype-${id}`, false)}
-      </div>
-    </div>
-    <div class="field">
-      <label>EOD Notes</label>
-      <textarea id="notes-${id}" placeholder="Enter EOD notes..."></textarea>
-    </div>
-    <div class="grid-3">
-      <div>
-        <label>Temp</label>
-        ${makeTempSelect(`temp-${id}`, null)}
-      </div>
-      <div>
-        <label>Status</label>
-        ${makeStatusSelect(`status-${id}`, null)}
-      </div>
-      <div>
-        <label>Offered?</label>
-        ${makeOfferedSelect(`offered-${id}`, null)}
-      </div>
-    </div>
-    <div class="grid-2">
-      <div>
-        <label>Setter (if any)</label>
-        <input type="text" id="setter-${id}" placeholder="Setter name...">
-      </div>
-      <div>
-        <label>Next follow-up date</label>
-        <input type="text" id="fupdate-${id}" placeholder="e.g. 5/15/2026">
-      </div>
-    </div>
-  `;
-  list.appendChild(div);
-}
-
-function isClosedStatus(status) { return status === 'CLOSED👍🏼'; }
-function isDQStatus(status) { return status === 'DQ'; }
-
-function renderResults(data) {
-  hasMissingClose = false;
-  document.getElementById('results').style.display = 'block';
-
-  if (data.skipped && data.skipped.length > 0) {
-    document.getElementById('skippedSection').style.display = 'block';
-    document.getElementById('skippedList').innerHTML = data.skipped.map(s =>
-      `<div class="skipped-item">⊘ ${s}</div>`
-    ).join('');
+  
+  if (lower === 'next week') {
+    return `${parts[0]}/?/${parts[2]}`;
   }
 
-  if (data.globalFlags && data.globalFlags.length > 0) {
-    document.getElementById('flagsSection').style.display = 'block';
-    document.getElementById('globalFlags').innerHTML = data.globalFlags.map(f => {
-      if (f.includes('MISSING_CLOSE')) {
-        hasMissingClose = true;
-        return `<div class="flag-red">⛔ ${f}<br>
-        <input type="text" id="missingCloseName" placeholder="Type prospect name here..."></div>`;
-      }
-      return `<div class="flag">⚑ ${f}</div>`;
-    }).join('');
+  const targetDay = dayMap[lower];
+  if (targetDay !== undefined && targetDay !== null) {
+    const result = new Date(baseDate);
+    const currentDay = result.getDay();
+    let daysUntil = targetDay - currentDay;
+    if (daysUntil <= 0) daysUntil += 7;
+    result.setDate(result.getDate() + daysUntil);
+    return `${result.getMonth() + 1}/${result.getDate()}/${result.getFullYear()}`;
   }
 
-  if (data.stats) {
-    document.getElementById('statsNote').innerHTML =
-      `<div class="flag" style="background:#EAF3DE;color:#27500A;">✓ Stats show ${data.stats.offersMade} offers today. Review offer selections below and confirm they match.</div>`;
+  return null;
+}
+
+async function applyRowColor(sheets, tabName, rowIndex, status) {
+  let color = null;
+  if (status === 'CLOSED👍🏼') {
+    color = { red: 0.851, green: 0.918, blue: 0.827 };
+  } else if (status === 'DQ') {
+    color = { red: 0.988, green: 0.898, blue: 0.804 };
   }
+  // FDQ gets NO color
+  if (!color) return;
 
-  const list = document.getElementById('prospectsList');
-  list.innerHTML = '';
-  data.prospects.forEach((p, i) => {
-    const isClosed = isClosedStatus(p.suggestedStatus);
-    const isDQ = isDQStatus(p.suggestedStatus);
-    const cardClass = isClosed ? 'closed' : isDQ ? 'dq' : '';
-    const rowColorNote = isClosed
-      ? '<span style="font-size:11px;background:#EAF3DE;color:#27500A;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → green</span>'
-      : isDQ
-      ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → orange</span>'
-      : '';
-
-    const flagsHtml = (p.flags || []).map(f => `<div class="flag">⚑ ${f}</div>`).join('');
-
-    list.innerHTML += `
-      <div class="prospect-card ${cardClass}" id="prospect-card-${i}">
-        <button class="remove-btn" onclick="removeProspect(${i})">×</button>
-        <div class="prospect-name">${p.name} ${rowColorNote}
-          <span class="badge ${p.isFollowUp ? 'badge-fup' : 'badge-new'}">${p.isFollowUp ? 'Follow-up' : 'New call'}</span>
-          ${isClosed ? '<span class="badge badge-closed">Closed</span>' : ''}
-        </div>
-        ${flagsHtml}
-        <div class="eod-notes">${p.eodNotes}</div>
-        <div class="grid-3">
-          <div><label>Temp</label>${makeTempSelect(`temp-${i}`, p.suggestedTemp)}</div>
-          <div><label>Status</label>${makeStatusSelect(`status-${i}`, p.suggestedStatus)}</div>
-          <div><label>Offered?</label>${makeOfferedSelect(`offered-${i}`, p.offered)}</div>
-        </div>
-        <div class="grid-2">
-          <div><label>Setter (if any)</label><input type="text" id="setter-${i}" value="${p.setter || ''}" placeholder="Setter name..."></div>
-          <div><label>Prospect email (optional)</label><input type="email" id="email-${i}" placeholder="email@example.com"></div>
-        </div>
-        ${p.nextFollowUpDate ? `<div class="fup-info">Next follow-up: <strong>${p.nextFollowUpDate}</strong></div>` : ''}
-      </div>`;
+  const sheetInfoResponse = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
   });
+  const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
+  if (!sheet) return;
+  const sheetId = sheet.properties.sheetId;
 
-  if (data.stats) {
-    const s = data.stats;
-    document.getElementById('statsGrid').innerHTML = `
-      <div class="stat-box"><div class="stat-val">${s.scheduledConsults||0}</div><div class="stat-lbl">Scheduled consults</div></div>
-      <div class="stat-box"><div class="stat-val">${s.liveConsults||0}</div><div class="stat-lbl">Live consults</div></div>
-      <div class="stat-box"><div class="stat-val">${s.offersMade||0}</div><div class="stat-lbl">Offers made</div></div>
-      <div class="stat-box"><div class="stat-val">${s.oneCallCloses||0}</div><div class="stat-lbl">1-call closes</div></div>
-      <div class="stat-box"><div class="stat-val">${s.followUpsScheduled||0}</div><div class="stat-lbl">FUPs scheduled</div></div>
-      <div class="stat-box"><div class="stat-val">${s.followUpsTaken||0}</div><div class="stat-lbl">FUPs taken</div></div>
-      <div class="stat-box"><div class="stat-val">${s.followUpCloses||0}</div><div class="stat-lbl">FUP closes</div></div>
-      <div class="stat-box"><div class="stat-val">$${(s.totalFERevenue||0).toLocaleString()}</div><div class="stat-lbl">Total FE revenue</div></div>
-      <div class="stat-box"><div class="stat-val">$${(s.totalFECollected||0).toLocaleString()}</div><div class="stat-lbl">Total FE collected</div></div>`;
-  }
-
-  updateApproveButton();
-}
-
-function updateApproveButton() {
-  const btn = document.getElementById('approveBtn');
-  const status = document.getElementById('approveStatus');
-  if (hasMissingClose) {
-    btn.disabled = true;
-    status.textContent = 'Blocked — enter missing close name above first';
-  } else {
-    btn.disabled = false;
-    status.textContent = '';
-  }
-}
-
-async function saveToSheets() {
-  if (!parsedData) return;
-
-  // Collect AI-parsed prospects (excluding removed ones)
-  const prospects = [];
-  parsedData.prospects.forEach((p, i) => {
-    if (removedIndices.has(i)) return;
-    const statusEl = document.getElementById(`status-${i}`);
-    const tempEl = document.getElementById(`temp-${i}`);
-    const offeredEl = document.getElementById(`offered-${i}`);
-    if (!statusEl) return;
-    prospects.push({
-      name: p.name,
-      email: document.getElementById(`email-${i}`)?.value || '',
-      isFollowUp: p.isFollowUp,
-      eodNotes: p.eodNotes,
-      suggestedStatus: statusEl.value || null,
-      suggestedTemp: tempEl.value || null,
-      offered: offeredEl.value,
-      nextFollowUpDate: p.nextFollowUpDate,
-      setter: document.getElementById(`setter-${i}`)?.value || '',
-    });
-  });
-
-  // Collect manual prospects
-  for (let m = 0; m < manualCount; m++) {
-    const id = `manual-${m}`;
-    const card = document.getElementById(`prospect-card-${id}`);
-    if (!card) continue; // was removed
-    const nameEl = document.getElementById(`name-${id}`);
-    if (!nameEl || !nameEl.value.trim()) continue;
-    prospects.push({
-      name: nameEl.value.trim(),
-      email: '',
-      isFollowUp: document.getElementById(`calltype-${id}`)?.value === 'true',
-      eodNotes: document.getElementById(`notes-${id}`)?.value || '',
-      suggestedStatus: document.getElementById(`status-${id}`)?.value || null,
-      suggestedTemp: document.getElementById(`temp-${id}`)?.value || null,
-      offered: document.getElementById(`offered-${id}`)?.value || '',
-      nextFollowUpDate: document.getElementById(`fupdate-${id}`)?.value || null,
-      setter: document.getElementById(`setter-${id}`)?.value || '',
-    });
-  }
-
-  // Handle missing close
-  if (hasMissingClose) {
-    const missingName = document.getElementById('missingCloseName')?.value;
-    if (!missingName) {
-      document.getElementById('saveResult').innerHTML = '<div class="error">Please enter the missing closed prospect name before approving.</div>';
-      return;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    resource: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: rowIndex - 1,
+            endRowIndex: rowIndex,
+            startColumnIndex: 0,
+            endColumnIndex: 11
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: color
+            }
+          },
+          fields: 'userEnteredFormat.backgroundColor'
+        }
+      }]
     }
-    prospects.push({
-      name: missingName,
-      email: '',
-      isFollowUp: true,
-      eodNotes: `${parsedData.date} EOD — CLOSED (identified from STA Sales channel)`,
-      suggestedStatus: 'CLOSED👍🏼',
-      suggestedTemp: '🔥🔥🔥',
-      offered: 'Yes',
-      nextFollowUpDate: null,
-      setter: '',
-    });
-  }
-
-  document.getElementById('approveBtn').disabled = true;
-  document.getElementById('saveResult').innerHTML = '<div class="loading">Saving to Google Sheets...</div>';
-
-  try {
-    const res = await fetch('/api/save-to-sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prospects,
-        stats: parsedData.stats,
-        date: parsedData.date,
-        closerName: document.getElementById('closerSelect').value
-      })
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-    document.getElementById('saveResult').innerHTML = `<div class="success">✓ ${result.message}</div>`;
-  } catch(e) {
-    document.getElementById('saveResult').innerHTML = `<div class="error">Error: ${e.message}</div>`;
-    document.getElementById('approveBtn').disabled = false;
-  }
+  });
 }
 
-loadClosers();
-</script>
-</body>
-</html>
+async function applyRedText(sheets, tabName, rowIndex, colIndex) {
+  const sheetInfoResponse = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
+  const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
+  if (!sheet) return;
+  const sheetId = sheet.properties.sheetId;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    resource: {
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheetId,
+            startRowIndex: rowIndex - 1,
+            endRowIndex: rowIndex,
+            startColumnIndex: colIndex,
+            endColumnIndex: colIndex + 1
+          },
+          cell: {
+            userEnteredFormat: {
+              textFormat: {
+                foregroundColor: { red: 1, green: 0, blue: 0 }
+              }
+            }
+          },
+          fields: 'userEnteredFormat.textFormat.foregroundColor'
+        }
+      }]
+    }
+  });
+}
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/api/closers', (req, res) => {
+  res.json(CLOSERS);
+});
+
+app.post('/api/parse-eod', async (req, res) => {
+  const { eodText, closerName } = req.body;
+  if (!eodText || !closerName) {
+    return res.status(400).json({ error: 'Missing EOD text or closer name' });
+  }
+
+  try {
+    const prompt = `You are a sales data extraction assistant. Parse this EOD report from closer "${closerName}".
+
+EOD TEXT:
+${eodText}
+
+WHAT TO SKIP (add to skipped array, do NOT add to prospects):
+- First time calls that are RS, NS, or Cancelled — call never happened
+- Calls that were "handed off" to someone else
+- Entries that are just "LT" with no notes — transferred to another rep, call never happened with this closer
+- CP NS, CP RS, CP Cancelled — call source entries with no-show/cancelled/rescheduled, skip them
+- Examples: "Que Jay - RS", "Karla - NS", "John - Cancelled", "Gabriela - handed off", "LT"
+
+WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
+- First time calls where the call actually happened and closer wrote notes
+
+WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
+- Any entry with FUP right after the name
+- Log all follow-ups even if RS, NS, or Cancelled
+
+PROSPECT NAME RULES:
+- Extract ONLY the prospect's name. Strip out everything else.
+- Examples of what to strip: "Closers.io Consult w/", "& Fox Macpherson", "& [closer name]", "(CP)", setter names before the prospect name
+- "Closers.io Consult w/ Kevan Nhundu & Fox Macpherson" → name is "Kevan Nhundu"
+- "Closers.io Consult w/ arsh Singh & Fox Macpherson (CP)" → name is "Arsh Singh"
+
+EOD NOTES RULES:
+- For NEW prospects: prefix with date like "5/8 EOD" then verbatim notes
+- For FOLLOW-UPS: prefix with "5/8 EOD FUP - RS" then verbatim notes
+- Copy VERBATIM after the prefix. Include CP references in the notes if the call happened.
+- Do not include CP references if the call was skipped.
+
+FOLLOW-UP DATE RULES:
+- If exact date given (e.g. "FU Monday", "FU Thursday", "tomorrow", "in 2 days"): set nextFollowUpDate to the day name or "tomorrow" and I will calculate the actual date
+- If "next week" with no specific day: set to "NEXT_WEEK"
+- If only "will nurture", "ULLP", "sending resources", no follow up booked: set to "NURTURE"
+- If no follow-up mentioned: null
+
+TEMPERATURE RULES:
+- 🔥🔥🔥 = ONLY for closed deals. Never use for anything else.
+- Hot = verbal yes, reviewing contract, paying tomorrow/in 2 days/end of week, imminent payment, on the verge
+- Warm = FUP booked, bought in but has an objection
+- Cool = some interest but slowing down, DQ sent to ULLP
+- Cold = DQ, FDQ, NS, Cancelled
+
+OFFER RULES:
+- Closed = Yes always
+- "Didn't offer" or "No offer" = No
+- "Pitched trial" or trial mention = Yes
+- "Gave coaching", "ULLP", "gave resources" without pitching = No
+- Cross check: total Yes offers must match the offersMade number in stats
+
+STATUS OPTIONS (use EXACTLY as written):
+CLOSED👍🏼
+Deposit 💵 Referral
+DQ
+FDQ
+Partner | Multiple Partners
+Sticker Shock | Investment Issue
+Iffy / Feeling it Out / Not Sure
+DIM - do it myself
+Fact Finder/Coaching/Researching
+Timing/Logistics
+Need to pitch/offer
+Not Moving Forward
+Y - Long follow up
+Re-offer
+Burned 🚒
+Refund
+
+TEMP OPTIONS: Cold, Cool, Warm, Hot, 🔥🔥🔥
+
+Return ONLY valid JSON no markdown:
+{
+  "date": "M/D/YYYY",
+  "closer": "${closerName}",
+  "prospects": [
+    {
+      "name": "Prospect name only",
+      "isFollowUp": false,
+      "eodNotes": "5/8 EOD verbatim notes",
+      "suggestedStatus": "exact status or null",
+      "suggestedTemp": "temp or null",
+      "offered": "Yes|No|Unknown",
+      "nextFollowUpDate": "day name like Monday/Thursday/tomorrow or NEXT_WEEK or NURTURE or M/D/YYYY or null",
+      "setter": "setter name or null",
+      "email": "",
+      "flags": []
+    }
+  ],
+  "stats": {
+    "scheduledConsults": 0,
+    "liveConsults": 0,
+    "offersMade": 0,
+    "oneCallCloses": 0,
+    "followUpsScheduled": 0,
+    "followUpsTaken": 0,
+    "followUpCloses": 0,
+    "totalFERevenue": 0,
+    "totalFECollected": 0
+  },
+  "skipped": ["name - reason"],
+  "globalFlags": []
+}`;
+
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const responseText = message.content[0].text;
+    const cleanJson = responseText.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleanJson);
+
+    // Process dates and statuses
+    parsed.prospects = parsed.prospects.map(p => {
+      p.suggestedStatus = mapStatus(p.suggestedStatus);
+
+      if (p.nextFollowUpDate) {
+        const fupLower = p.nextFollowUpDate.toLowerCase().trim();
+        if (fupLower === 'nurture') {
+          p.nextFollowUpDate = '?';
+          p.nextFollowUpDateIsApprox = true;
+        } else if (fupLower === 'next_week' || fupLower === 'next week') {
+          const parts = parsed.date.split('/');
+          p.nextFollowUpDate = `${parts[0]}/?/${parts[2]}`;
+          p.nextFollowUpDateIsApprox = true;
+        } else if (['monday','tuesday','wednesday','thursday','friday','saturday','sunday','tomorrow'].includes(fupLower)) {
+          const calculated = calculateFollowUpDate(parsed.date, fupLower);
+          if (calculated) {
+            p.nextFollowUpDate = calculated;
+          }
+        } else if (fupLower.includes('in ') && fupLower.includes('day')) {
+          // "in 2 days" etc
+          const match = fupLower.match(/in (\d+) day/);
+          if (match) {
+            const parts = parsed.date.split('/');
+            const base = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+            base.setDate(base.getDate() + parseInt(match[1]));
+            p.nextFollowUpDate = `${base.getMonth() + 1}/${base.getDate()}/${base.getFullYear()}`;
+          }
+        }
+      }
+      return p;
+    });
+
+    // Check offer count mismatch
+    const confirmedOffers = parsed.prospects.filter(p => p.offered === 'Yes').length;
+    const statsOffers = parsed.stats?.offersMade || 0;
+    if (confirmedOffers !== statsOffers && statsOffers > 0) {
+      if (!parsed.globalFlags) parsed.globalFlags = [];
+      parsed.globalFlags.push(`OFFER_MISMATCH: Stats show ${statsOffers} offers but only ${confirmedOffers} confirmed. Review offer selections.`);
+    }
+
+    // Check FUP close mismatch
+    const statsFollowUpCloses = parsed.stats?.followUpCloses || 0;
+    const confirmedFUPCloses = parsed.prospects.filter(p => p.isFollowUp && p.suggestedStatus === 'CLOSED👍🏼').length;
+    if (statsFollowUpCloses > confirmedFUPCloses) {
+      if (!parsed.globalFlags) parsed.globalFlags = [];
+      parsed.globalFlags.push(`MISSING_CLOSE: Stats show ${statsFollowUpCloses} FUP close(s) but only ${confirmedFUPCloses} found in EOD notes. Check STA Sales channel.`);
+    }
+
+    parsed.prospects = parsed.prospects.map(applyFUPRules);
+    res.json(parsed);
+  } catch (error) {
+    console.error('Parse error:', error);
+    res.status(500).json({ error: 'Failed to parse EOD: ' + error.message });
+  }
+});
+
+app.post('/api/save-to-sheets', async (req, res) => {
+  const { prospects, stats, date, closerName } = req.body;
+
+  try {
+    const auth = getGoogleAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    const tabName = closerName;
+    const closerShortName = CLOSER_DROPDOWN_MAP[closerName] || closerName;
+
+    const existingResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `'${tabName}'!A:K`,
+    });
+    const existingRows = existingResponse.data.values || [];
+
+    const prospectRowMap = {};
+    existingRows.forEach((row, index) => {
+      if (index === 0) return;
+      const name = (row[2] || '').toLowerCase().trim();
+      if (name) {
+        prospectRowMap[name] = index + 1;
+      }
+    });
+
+    let lastDataRow = 1;
+    existingRows.forEach((row, index) => {
+      if (row && row[0] && row[0].toString().trim() !== '') {
+        lastDataRow = index + 1;
+      }
+    });
+
+    for (const prospect of prospects) {
+      const p = applyFUPRules(prospect);
+      p.suggestedStatus = mapStatus(p.suggestedStatus);
+      const isApproxDate = p.nextFollowUpDate && p.nextFollowUpDate.includes('?');
+
+      if (p.isFollowUp) {
+        const existingRowIndex = prospectRowMap[p.name.toLowerCase().trim()];
+
+        if (existingRowIndex) {
+          const currentNotesResponse = await sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `'${tabName}'!E${existingRowIndex}`,
+          });
+          const currentNotes = currentNotesResponse.data.values?.[0]?.[0] || '';
+          const updatedNotes = currentNotes + '\n\n' + p.eodNotes;
+
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `'${tabName}'!E${existingRowIndex}`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: [[updatedNotes]] },
+          });
+
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: `'${tabName}'!F${existingRowIndex}`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values: [[date]] },
+          });
+
+          if (p.nextFollowUpDate) {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID,
+              range: `'${tabName}'!G${existingRowIndex}`,
+              valueInputOption: 'USER_ENTERED',
+              resource: { values: [[p.nextFollowUpDate]] },
+            });
+            if (isApproxDate) {
+              await applyRedText(sheets, tabName, existingRowIndex, 6);
+            }
+          }
+
+          if (p.offered === 'Yes' || p.offered === 'No') {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID,
+              range: `'${tabName}'!H${existingRowIndex}`,
+              valueInputOption: 'USER_ENTERED',
+              resource: { values: [[p.offered]] },
+            });
+          }
+
+          if (p.suggestedTemp) {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID,
+              range: `'${tabName}'!I${existingRowIndex}`,
+              valueInputOption: 'USER_ENTERED',
+              resource: { values: [[p.suggestedTemp]] },
+            });
+          }
+
+          if (p.suggestedStatus) {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: SPREADSHEET_ID,
+              range: `'${tabName}'!J${existingRowIndex}`,
+              valueInputOption: 'USER_ENTERED',
+              resource: { values: [[p.suggestedStatus]] },
+            });
+            await applyRowColor(sheets, tabName, existingRowIndex, p.suggestedStatus);
+          }
+
+        } else {
+          console.log(`FUP prospect not found: ${p.name}`);
+        }
+
+      } else {
+        lastDataRow++;
+        const targetRow = lastDataRow;
+
+        const rowData = [
+          date,
+          closerShortName,
+          p.name + (p.email ? ` | ${p.email}` : ''),
+          p.setter || '',
+          p.eodNotes,
+          date,
+          p.nextFollowUpDate || '',
+          p.offered === 'Yes' ? 'YES' : p.offered === 'No' ? 'NO' : '',
+          p.suggestedTemp || '',
+          p.suggestedStatus || '',
+          ''
+        ];
+
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `'${tabName}'!A${targetRow}:K${targetRow}`,
+          valueInputOption: 'USER_ENTERED',
+          resource: { values: [rowData] },
+        });
+
+        if (p.suggestedStatus) {
+          await applyRowColor(sheets, tabName, targetRow, p.suggestedStatus);
+        }
+
+        if (isApproxDate) {
+          await applyRedText(sheets, tabName, targetRow, 6);
+        }
+      }
+    }
+
+    res.json({ success: true, message: `Saved ${prospects.length} prospects to ${tabName} tab` });
+  } catch (error) {
+    console.error('Sheets error:', error);
+    res.status(500).json({ error: 'Failed to save to sheets: ' + error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
