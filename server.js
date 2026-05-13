@@ -202,18 +202,6 @@ async function applyRedText(sheets, tabName, rowIndex, colIndex) {
   });
 }
 
-// Fuzzy name match - returns true if first names match
-function namesMatch(name1, name2) {
-  if (!name1 || !name2) return false;
-  const n1 = name1.toLowerCase().trim();
-  const n2 = name2.toLowerCase().trim();
-  if (n1 === n2) return true;
-  // Check if first names match
-  const firstName1 = n1.split(' ')[0];
-  const firstName2 = n2.split(' ')[0];
-  return firstName1 === firstName2;
-}
-
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -247,15 +235,19 @@ WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Any entry with FUP right after the name
 - Log all follow-ups even if RS, NS, or Cancelled
 
-PROSPECT NAME RULES:
+PROSPECT NAME EXTRACTION RULES:
 - Extract ONLY the prospect's name
-- Strip: "Closers.io Consult w/", "& [closer name]", "(CP)", setter names
-- "Closers.io Consult w/ Kevan Nhundu & Fox Macpherson" → "Kevan Nhundu"
+- Strip ONLY these parts: "Closers.io Consult w/", "& [closer name]", "(CP)"
+- Keep EVERYTHING else in the EOD notes verbatim — including outcome labels like "No Offer", "Offer", "FDQ", "LT -", etc.
+- Example: "Closers.io Consult w/ Micael Avalos & David Bateman (CP) No Offer - FDQ 17 year old..." 
+  → name: "Micael Avalos"
+  → notes: "5/8 EOD No Offer - FDQ 17 year old..."
+- Example: "Closers.io Consult w/ Kevan Nhundu & Fox Macpherson" → name: "Kevan Nhundu"
 
 EOD NOTES RULES:
-- New prospects: prefix "5/8 EOD" then verbatim
-- Follow-ups: prefix "5/8 EOD FUP - RS" then verbatim
-- Copy VERBATIM after prefix
+- For NEW prospects: prefix with date like "5/8 EOD" then ALL remaining text verbatim
+- For FOLLOW-UPS: prefix with "5/8 EOD FUP - RS" then verbatim
+- Copy VERBATIM after prefix — do not remove or reorder any words
 
 FOLLOW-UP DATE RULES:
 - Specific day (Monday, Thursday, tomorrow, in 2 days): use that day name
@@ -272,7 +264,7 @@ TEMPERATURE RULES:
 
 OFFER RULES:
 - Closed = Yes
-- "Didn't offer" = No
+- "No Offer" or "Didn't offer" = No
 - Trial mention = Yes
 - Coaching/ULLP without pitching = No
 
@@ -396,14 +388,12 @@ app.post('/api/save-to-sheets', async (req, res) => {
     });
     const existingRows = existingResponse.data.values || [];
 
-    // Build row map with both full name and first name
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
       const name = (row[2] || '').toLowerCase().trim();
       if (name) {
         prospectRowMap[name] = index + 1;
-        // Also index by first name only
         const firstName = name.split(' ')[0];
         if (!prospectRowMap[firstName]) {
           prospectRowMap[firstName] = index + 1;
@@ -426,8 +416,6 @@ app.post('/api/save-to-sheets', async (req, res) => {
       if (p.isFollowUp) {
         const nameLower = p.name.toLowerCase().trim();
         const firstName = nameLower.split(' ')[0];
-        
-        // Try full name match first, then first name match
         const existingRowIndex = prospectRowMap[nameLower] || prospectRowMap[firstName];
 
         if (existingRowIndex) {
