@@ -129,27 +129,21 @@ function applyFUPRules(prospect) {
 function calculateFollowUpDate(eodDate, dayMention) {
   const parts = eodDate.split('/');
   const baseDate = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
-  
   const dayMap = {
     'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
-    'friday': 5, 'saturday': 6, 'sunday': 0,
-    'tomorrow': null, 'next week': null
+    'friday': 5, 'saturday': 6, 'sunday': 0
   };
-
   const lower = dayMention.toLowerCase().trim();
-  
   if (lower === 'tomorrow') {
     const tomorrow = new Date(baseDate);
     tomorrow.setDate(tomorrow.getDate() + 1);
     return `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}/${tomorrow.getFullYear()}`;
   }
-  
   if (lower === 'next week') {
     return `${parts[0]}/?/${parts[2]}`;
   }
-
   const targetDay = dayMap[lower];
-  if (targetDay !== undefined && targetDay !== null) {
+  if (targetDay !== undefined) {
     const result = new Date(baseDate);
     const currentDay = result.getDay();
     let daysUntil = targetDay - currentDay;
@@ -157,7 +151,6 @@ function calculateFollowUpDate(eodDate, dayMention) {
     result.setDate(result.getDate() + daysUntil);
     return `${result.getMonth() + 1}/${result.getDate()}/${result.getFullYear()}`;
   }
-
   return null;
 }
 
@@ -168,12 +161,9 @@ async function applyRowColor(sheets, tabName, rowIndex, status) {
   } else if (status === 'DQ') {
     color = { red: 0.988, green: 0.898, blue: 0.804 };
   }
-  // FDQ gets NO color
   if (!color) return;
 
-  const sheetInfoResponse = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-  });
+  const sheetInfoResponse = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
   if (!sheet) return;
   const sheetId = sheet.properties.sheetId;
@@ -183,18 +173,8 @@ async function applyRowColor(sheets, tabName, rowIndex, status) {
     resource: {
       requests: [{
         repeatCell: {
-          range: {
-            sheetId: sheetId,
-            startRowIndex: rowIndex - 1,
-            endRowIndex: rowIndex,
-            startColumnIndex: 0,
-            endColumnIndex: 11
-          },
-          cell: {
-            userEnteredFormat: {
-              backgroundColor: color
-            }
-          },
+          range: { sheetId, startRowIndex: rowIndex - 1, endRowIndex: rowIndex, startColumnIndex: 0, endColumnIndex: 11 },
+          cell: { userEnteredFormat: { backgroundColor: color } },
           fields: 'userEnteredFormat.backgroundColor'
         }
       }]
@@ -203,9 +183,7 @@ async function applyRowColor(sheets, tabName, rowIndex, status) {
 }
 
 async function applyRedText(sheets, tabName, rowIndex, colIndex) {
-  const sheetInfoResponse = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-  });
+  const sheetInfoResponse = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const sheet = sheetInfoResponse.data.sheets.find(s => s.properties.title === tabName);
   if (!sheet) return;
   const sheetId = sheet.properties.sheetId;
@@ -215,25 +193,25 @@ async function applyRedText(sheets, tabName, rowIndex, colIndex) {
     resource: {
       requests: [{
         repeatCell: {
-          range: {
-            sheetId: sheetId,
-            startRowIndex: rowIndex - 1,
-            endRowIndex: rowIndex,
-            startColumnIndex: colIndex,
-            endColumnIndex: colIndex + 1
-          },
-          cell: {
-            userEnteredFormat: {
-              textFormat: {
-                foregroundColor: { red: 1, green: 0, blue: 0 }
-              }
-            }
-          },
+          range: { sheetId, startRowIndex: rowIndex - 1, endRowIndex: rowIndex, startColumnIndex: colIndex, endColumnIndex: colIndex + 1 },
+          cell: { userEnteredFormat: { textFormat: { foregroundColor: { red: 1, green: 0, blue: 0 } } } },
           fields: 'userEnteredFormat.textFormat.foregroundColor'
         }
       }]
     }
   });
+}
+
+// Fuzzy name match - returns true if first names match
+function namesMatch(name1, name2) {
+  if (!name1 || !name2) return false;
+  const n1 = name1.toLowerCase().trim();
+  const n2 = name2.toLowerCase().trim();
+  if (n1 === n2) return true;
+  // Check if first names match
+  const firstName1 = n1.split(' ')[0];
+  const firstName2 = n2.split(' ')[0];
+  return firstName1 === firstName2;
 }
 
 app.get('/', (req, res) => {
@@ -257,52 +235,48 @@ EOD TEXT:
 ${eodText}
 
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
-- First time calls that are RS, NS, or Cancelled — call never happened
+- First time calls that are RS, NS, or Cancelled
 - Calls that were "handed off" to someone else
-- Entries that are just "LT" with no notes — transferred to another rep, call never happened with this closer
-- CP NS, CP RS, CP Cancelled — call source entries with no-show/cancelled/rescheduled, skip them
-- Examples: "Que Jay - RS", "Karla - NS", "John - Cancelled", "Gabriela - handed off", "LT"
+- Entries that are just "LT" with no notes
+- CP NS, CP RS, CP Cancelled
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
-- First time calls where the call actually happened and closer wrote notes
+- First time calls where the call actually happened
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
 - Any entry with FUP right after the name
 - Log all follow-ups even if RS, NS, or Cancelled
 
 PROSPECT NAME RULES:
-- Extract ONLY the prospect's name. Strip out everything else.
-- Examples of what to strip: "Closers.io Consult w/", "& Fox Macpherson", "& [closer name]", "(CP)", setter names before the prospect name
-- "Closers.io Consult w/ Kevan Nhundu & Fox Macpherson" → name is "Kevan Nhundu"
-- "Closers.io Consult w/ arsh Singh & Fox Macpherson (CP)" → name is "Arsh Singh"
+- Extract ONLY the prospect's name
+- Strip: "Closers.io Consult w/", "& [closer name]", "(CP)", setter names
+- "Closers.io Consult w/ Kevan Nhundu & Fox Macpherson" → "Kevan Nhundu"
 
 EOD NOTES RULES:
-- For NEW prospects: prefix with date like "5/8 EOD" then verbatim notes
-- For FOLLOW-UPS: prefix with "5/8 EOD FUP - RS" then verbatim notes
-- Copy VERBATIM after the prefix. Include CP references in the notes if the call happened.
-- Do not include CP references if the call was skipped.
+- New prospects: prefix "5/8 EOD" then verbatim
+- Follow-ups: prefix "5/8 EOD FUP - RS" then verbatim
+- Copy VERBATIM after prefix
 
 FOLLOW-UP DATE RULES:
-- If exact date given (e.g. "FU Monday", "FU Thursday", "tomorrow", "in 2 days"): set nextFollowUpDate to the day name or "tomorrow" and I will calculate the actual date
-- If "next week" with no specific day: set to "NEXT_WEEK"
-- If only "will nurture", "ULLP", "sending resources", no follow up booked: set to "NURTURE"
-- If no follow-up mentioned: null
+- Specific day (Monday, Thursday, tomorrow, in 2 days): use that day name
+- Next week no specific day: NEXT_WEEK
+- Will nurture/ULLP/no FUP booked: NURTURE
+- No follow-up: null
 
 TEMPERATURE RULES:
-- 🔥🔥🔥 = ONLY for closed deals. Never use for anything else.
-- Hot = verbal yes, reviewing contract, paying tomorrow/in 2 days/end of week, imminent payment, on the verge
-- Warm = FUP booked, bought in but has an objection
-- Cool = some interest but slowing down, DQ sent to ULLP
+- 🔥🔥🔥 = ONLY closed deals
+- Hot = verbal yes, reviewing contract, imminent payment
+- Warm = FUP booked, bought in but objection
+- Cool = some interest, slowing down, DQ to ULLP
 - Cold = DQ, FDQ, NS, Cancelled
 
 OFFER RULES:
-- Closed = Yes always
-- "Didn't offer" or "No offer" = No
-- "Pitched trial" or trial mention = Yes
-- "Gave coaching", "ULLP", "gave resources" without pitching = No
-- Cross check: total Yes offers must match the offersMade number in stats
+- Closed = Yes
+- "Didn't offer" = No
+- Trial mention = Yes
+- Coaching/ULLP without pitching = No
 
-STATUS OPTIONS (use EXACTLY as written):
+STATUS OPTIONS (exact):
 CLOSED👍🏼
 Deposit 💵 Referral
 DQ
@@ -320,9 +294,7 @@ Re-offer
 Burned 🚒
 Refund
 
-TEMP OPTIONS: Cold, Cool, Warm, Hot, 🔥🔥🔥
-
-Return ONLY valid JSON no markdown:
+Return ONLY valid JSON:
 {
   "date": "M/D/YYYY",
   "closer": "${closerName}",
@@ -330,26 +302,20 @@ Return ONLY valid JSON no markdown:
     {
       "name": "Prospect name only",
       "isFollowUp": false,
-      "eodNotes": "5/8 EOD verbatim notes",
+      "eodNotes": "date EOD verbatim notes",
       "suggestedStatus": "exact status or null",
       "suggestedTemp": "temp or null",
       "offered": "Yes|No|Unknown",
-      "nextFollowUpDate": "day name like Monday/Thursday/tomorrow or NEXT_WEEK or NURTURE or M/D/YYYY or null",
-      "setter": "setter name or null",
+      "nextFollowUpDate": "day/NEXT_WEEK/NURTURE/M/D/YYYY/null",
+      "setter": "name or null",
       "email": "",
       "flags": []
     }
   ],
   "stats": {
-    "scheduledConsults": 0,
-    "liveConsults": 0,
-    "offersMade": 0,
-    "oneCallCloses": 0,
-    "followUpsScheduled": 0,
-    "followUpsTaken": 0,
-    "followUpCloses": 0,
-    "totalFERevenue": 0,
-    "totalFECollected": 0
+    "scheduledConsults": 0, "liveConsults": 0, "offersMade": 0,
+    "oneCallCloses": 0, "followUpsScheduled": 0, "followUpsTaken": 0,
+    "followUpCloses": 0, "totalFERevenue": 0, "totalFECollected": 0
   },
   "skipped": ["name - reason"],
   "globalFlags": []
@@ -365,7 +331,6 @@ Return ONLY valid JSON no markdown:
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
-    // Process dates and statuses
     parsed.prospects = parsed.prospects.map(p => {
       p.suggestedStatus = mapStatus(p.suggestedStatus);
 
@@ -380,11 +345,8 @@ Return ONLY valid JSON no markdown:
           p.nextFollowUpDateIsApprox = true;
         } else if (['monday','tuesday','wednesday','thursday','friday','saturday','sunday','tomorrow'].includes(fupLower)) {
           const calculated = calculateFollowUpDate(parsed.date, fupLower);
-          if (calculated) {
-            p.nextFollowUpDate = calculated;
-          }
+          if (calculated) p.nextFollowUpDate = calculated;
         } else if (fupLower.includes('in ') && fupLower.includes('day')) {
-          // "in 2 days" etc
           const match = fupLower.match(/in (\d+) day/);
           if (match) {
             const parts = parsed.date.split('/');
@@ -397,20 +359,18 @@ Return ONLY valid JSON no markdown:
       return p;
     });
 
-    // Check offer count mismatch
     const confirmedOffers = parsed.prospects.filter(p => p.offered === 'Yes').length;
     const statsOffers = parsed.stats?.offersMade || 0;
     if (confirmedOffers !== statsOffers && statsOffers > 0) {
       if (!parsed.globalFlags) parsed.globalFlags = [];
-      parsed.globalFlags.push(`OFFER_MISMATCH: Stats show ${statsOffers} offers but only ${confirmedOffers} confirmed. Review offer selections.`);
+      parsed.globalFlags.push(`OFFER_MISMATCH: Stats show ${statsOffers} offers but ${confirmedOffers} confirmed. Review offer selections.`);
     }
 
-    // Check FUP close mismatch
     const statsFollowUpCloses = parsed.stats?.followUpCloses || 0;
     const confirmedFUPCloses = parsed.prospects.filter(p => p.isFollowUp && p.suggestedStatus === 'CLOSED👍🏼').length;
     if (statsFollowUpCloses > confirmedFUPCloses) {
       if (!parsed.globalFlags) parsed.globalFlags = [];
-      parsed.globalFlags.push(`MISSING_CLOSE: Stats show ${statsFollowUpCloses} FUP close(s) but only ${confirmedFUPCloses} found in EOD notes. Check STA Sales channel.`);
+      parsed.globalFlags.push(`MISSING_CLOSE: Stats show ${statsFollowUpCloses} FUP close(s) but only ${confirmedFUPCloses} found. Check STA Sales channel.`);
     }
 
     parsed.prospects = parsed.prospects.map(applyFUPRules);
@@ -436,12 +396,18 @@ app.post('/api/save-to-sheets', async (req, res) => {
     });
     const existingRows = existingResponse.data.values || [];
 
+    // Build row map with both full name and first name
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
       const name = (row[2] || '').toLowerCase().trim();
       if (name) {
         prospectRowMap[name] = index + 1;
+        // Also index by first name only
+        const firstName = name.split(' ')[0];
+        if (!prospectRowMap[firstName]) {
+          prospectRowMap[firstName] = index + 1;
+        }
       }
     });
 
@@ -458,7 +424,11 @@ app.post('/api/save-to-sheets', async (req, res) => {
       const isApproxDate = p.nextFollowUpDate && p.nextFollowUpDate.includes('?');
 
       if (p.isFollowUp) {
-        const existingRowIndex = prospectRowMap[p.name.toLowerCase().trim()];
+        const nameLower = p.name.toLowerCase().trim();
+        const firstName = nameLower.split(' ')[0];
+        
+        // Try full name match first, then first name match
+        const existingRowIndex = prospectRowMap[nameLower] || prospectRowMap[firstName];
 
         if (existingRowIndex) {
           const currentNotesResponse = await sheets.spreadsheets.values.get({
@@ -489,9 +459,7 @@ app.post('/api/save-to-sheets', async (req, res) => {
               valueInputOption: 'USER_ENTERED',
               resource: { values: [[p.nextFollowUpDate]] },
             });
-            if (isApproxDate) {
-              await applyRedText(sheets, tabName, existingRowIndex, 6);
-            }
+            if (isApproxDate) await applyRedText(sheets, tabName, existingRowIndex, 6);
           }
 
           if (p.offered === 'Yes' || p.offered === 'No') {
@@ -551,13 +519,8 @@ app.post('/api/save-to-sheets', async (req, res) => {
           resource: { values: [rowData] },
         });
 
-        if (p.suggestedStatus) {
-          await applyRowColor(sheets, tabName, targetRow, p.suggestedStatus);
-        }
-
-        if (isApproxDate) {
-          await applyRedText(sheets, tabName, targetRow, 6);
-        }
+        if (p.suggestedStatus) await applyRowColor(sheets, tabName, targetRow, p.suggestedStatus);
+        if (isApproxDate) await applyRedText(sheets, tabName, targetRow, 6);
       }
     }
 

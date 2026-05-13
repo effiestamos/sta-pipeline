@@ -25,9 +25,10 @@
   .prospect-card.closed { border-left: 4px solid #1D9E75; background: #f0faf5; }
   .prospect-card.dq { border-left: 4px solid #f5a623; background: #fff9f0; }
   .prospect-card.manual { border: 2px dashed #4A90D9; background: #f0f7ff; }
-  .remove-btn { position: absolute; top: 10px; right: 10px; background: #e53e3e; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
-  .prospect-name { font-size: 15px; font-weight: 500; margin-bottom: 6px; padding-right: 30px; }
-  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; display: inline-block; margin-right: 4px; margin-bottom: 6px; }
+  .remove-btn { position: absolute; top: 10px; right: 10px; background: #e53e3e; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .prospect-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding-right: 30px; flex-wrap: wrap; }
+  .prospect-name-input { font-size: 14px; font-weight: 500; border: 1px solid #ddd; border-radius: 6px; padding: 4px 8px; width: auto; min-width: 200px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; display: inline-block; margin-right: 4px; }
   .badge-new { background: #E6F1FB; color: #0C447C; }
   .badge-fup { background: #EEEDFE; color: #3C3489; }
   .badge-closed { background: #EAF3DE; color: #27500A; }
@@ -38,7 +39,7 @@
   .field { margin-bottom: 8px; }
   .flag { background: #FAEEDA; color: #633806; border-radius: 6px; font-size: 12px; padding: 6px 10px; margin-bottom: 8px; }
   .flag-red { background: #FCEBEB; color: #791F1F; border-radius: 6px; font-size: 12px; padding: 6px 10px; margin-bottom: 8px; }
-  .flag-red input { margin-top: 6px; border-color: #A32D2D; }
+  .flag-red input[type="text"] { margin-top: 6px; border-color: #A32D2D; }
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px; }
   .stat-box { background: #f9f9f9; border-radius: 6px; padding: 10px; text-align: center; }
   .stat-val { font-size: 22px; font-weight: 600; color: #1a1a2e; }
@@ -49,8 +50,6 @@
   .error { background: #FCEBEB; color: #791F1F; border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-top: 1rem; }
   .fup-info { font-size: 12px; color: #666; margin-top: 4px; }
   .actions { display: flex; gap: 10px; align-items: center; margin-top: 1rem; }
-  .add-section { border: 2px dashed #4A90D9; border-radius: 8px; padding: 1rem; margin-bottom: 10px; background: #f0f7ff; }
-  .add-section h3 { font-size: 13px; font-weight: 500; color: #2A69AC; margin-bottom: 10px; }
   #results { display: none; }
 </style>
 </head>
@@ -111,22 +110,12 @@
 
 <script>
 const STATUS_OPTIONS = [
-  'CLOSED👍🏼',
-  'Deposit 💵 Referral',
-  'DQ',
-  'FDQ',
-  'Partner | Multiple Partners',
-  'Sticker Shock | Investment Issue',
-  'Iffy / Feeling it Out / Not Sure',
-  'DIM - do it myself',
-  'Fact Finder/Coaching/Researching',
-  'Timing/Logistics',
-  'Need to pitch/offer',
-  'Not Moving Forward',
-  'Y - Long follow up',
-  'Re-offer',
-  'Burned 🚒',
-  'Refund'
+  'CLOSED👍🏼','Deposit 💵 Referral','DQ','FDQ',
+  'Partner | Multiple Partners','Sticker Shock | Investment Issue',
+  'Iffy / Feeling it Out / Not Sure','DIM - do it myself',
+  'Fact Finder/Coaching/Researching','Timing/Logistics',
+  'Need to pitch/offer','Not Moving Forward','Y - Long follow up',
+  'Re-offer','Burned 🚒','Refund'
 ];
 const TEMP_OPTIONS = ['Cold','Cool','Warm','Hot','🔥🔥🔥'];
 
@@ -141,8 +130,7 @@ async function loadClosers() {
   const sel = document.getElementById('closerSelect');
   closers.forEach(c => {
     const opt = document.createElement('option');
-    opt.value = c;
-    opt.textContent = c;
+    opt.value = c; opt.textContent = c;
     sel.appendChild(opt);
   });
 }
@@ -178,17 +166,13 @@ async function parseEOD() {
 
 function makeStatusSelect(id, suggested) {
   const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
-  const opts = STATUS_OPTIONS.map(s =>
-    `<option value="${s}" ${s === suggested ? 'selected' : ''}>${s}</option>`
-  ).join('');
+  const opts = STATUS_OPTIONS.map(s => `<option value="${s}" ${s === suggested ? 'selected' : ''}>${s}</option>`).join('');
   return `<select id="${id}">${blank}${opts}</select>`;
 }
 
 function makeTempSelect(id, suggested) {
   const blank = `<option value="" ${!suggested ? 'selected' : ''}>— no change —</option>`;
-  const opts = TEMP_OPTIONS.map(t =>
-    `<option value="${t}" ${t === suggested ? 'selected' : ''}>${t}</option>`
-  ).join('');
+  const opts = TEMP_OPTIONS.map(t => `<option value="${t}" ${t === suggested ? 'selected' : ''}>${t}</option>`).join('');
   return `<select id="${id}">${blank}${opts}</select>`;
 }
 
@@ -221,53 +205,32 @@ function addManualProspect() {
   div.id = `prospect-card-${id}`;
   div.innerHTML = `
     <button class="remove-btn" onclick="removeProspect('${id}')">×</button>
-    <div class="prospect-name">
+    <div class="prospect-name-row">
       <span class="badge badge-manual">Manual entry</span>
+      <input type="text" class="prospect-name-input" id="name-${id}" placeholder="Prospect name...">
     </div>
     <div class="grid-2" style="margin-bottom:8px;">
-      <div>
-        <label>Prospect name</label>
-        <input type="text" id="name-${id}" placeholder="Full name...">
-      </div>
-      <div>
-        <label>Call type</label>
-        ${makeCallTypeSelect(`calltype-${id}`, false)}
-      </div>
+      <div><label>Call type</label>${makeCallTypeSelect(`calltype-${id}`, false)}</div>
+      <div><label>Setter (if any)</label><input type="text" id="setter-${id}" placeholder="Setter name..."></div>
     </div>
     <div class="field">
       <label>EOD Notes</label>
       <textarea id="notes-${id}" placeholder="Enter EOD notes..."></textarea>
     </div>
     <div class="grid-3">
-      <div>
-        <label>Temp</label>
-        ${makeTempSelect(`temp-${id}`, null)}
-      </div>
-      <div>
-        <label>Status</label>
-        ${makeStatusSelect(`status-${id}`, null)}
-      </div>
-      <div>
-        <label>Offered?</label>
-        ${makeOfferedSelect(`offered-${id}`, null)}
-      </div>
+      <div><label>Temp</label>${makeTempSelect(`temp-${id}`, null)}</div>
+      <div><label>Status</label>${makeStatusSelect(`status-${id}`, null)}</div>
+      <div><label>Offered?</label>${makeOfferedSelect(`offered-${id}`, null)}</div>
     </div>
-    <div class="grid-2">
-      <div>
-        <label>Setter (if any)</label>
-        <input type="text" id="setter-${id}" placeholder="Setter name...">
-      </div>
-      <div>
-        <label>Next follow-up date</label>
-        <input type="text" id="fupdate-${id}" placeholder="e.g. 5/15/2026">
-      </div>
-    </div>
-  `;
+    <div class="field">
+      <label>Next follow-up date</label>
+      <input type="text" id="fupdate-${id}" placeholder="e.g. 5/15/2026">
+    </div>`;
   list.appendChild(div);
 }
 
-function isClosedStatus(status) { return status === 'CLOSED👍🏼'; }
-function isDQStatus(status) { return status === 'DQ'; }
+function isClosedStatus(s) { return s === 'CLOSED👍🏼'; }
+function isDQStatus(s) { return s === 'DQ'; }
 
 function renderResults(data) {
   hasMissingClose = false;
@@ -275,9 +238,7 @@ function renderResults(data) {
 
   if (data.skipped && data.skipped.length > 0) {
     document.getElementById('skippedSection').style.display = 'block';
-    document.getElementById('skippedList').innerHTML = data.skipped.map(s =>
-      `<div class="skipped-item">⊘ ${s}</div>`
-    ).join('');
+    document.getElementById('skippedList').innerHTML = data.skipped.map(s => `<div class="skipped-item">⊘ ${s}</div>`).join('');
   }
 
   if (data.globalFlags && data.globalFlags.length > 0) {
@@ -285,8 +246,7 @@ function renderResults(data) {
     document.getElementById('globalFlags').innerHTML = data.globalFlags.map(f => {
       if (f.includes('MISSING_CLOSE')) {
         hasMissingClose = true;
-        return `<div class="flag-red">⛔ ${f}<br>
-        <input type="text" id="missingCloseName" placeholder="Type prospect name here..."></div>`;
+        return `<div class="flag-red">⛔ ${f}<br><input type="text" id="missingCloseName" placeholder="Type prospect name here..."></div>`;
       }
       return `<div class="flag">⚑ ${f}</div>`;
     }).join('');
@@ -294,7 +254,7 @@ function renderResults(data) {
 
   if (data.stats) {
     document.getElementById('statsNote').innerHTML =
-      `<div class="flag" style="background:#EAF3DE;color:#27500A;">✓ Stats show ${data.stats.offersMade} offers today. Review offer selections below and confirm they match.</div>`;
+      `<div class="flag" style="background:#EAF3DE;color:#27500A;">✓ Stats show ${data.stats.offersMade} offers today. Review offer selections below.</div>`;
   }
 
   const list = document.getElementById('prospectsList');
@@ -304,19 +264,19 @@ function renderResults(data) {
     const isDQ = isDQStatus(p.suggestedStatus);
     const cardClass = isClosed ? 'closed' : isDQ ? 'dq' : '';
     const rowColorNote = isClosed
-      ? '<span style="font-size:11px;background:#EAF3DE;color:#27500A;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → green</span>'
-      : isDQ
-      ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;margin-left:6px;">Row → orange</span>'
-      : '';
+      ? '<span style="font-size:11px;background:#EAF3DE;color:#27500A;padding:2px 7px;border-radius:10px;">Row → green</span>'
+      : isDQ ? '<span style="font-size:11px;background:#FFF0DC;color:#633806;padding:2px 7px;border-radius:10px;">Row → orange</span>' : '';
 
     const flagsHtml = (p.flags || []).map(f => `<div class="flag">⚑ ${f}</div>`).join('');
 
     list.innerHTML += `
       <div class="prospect-card ${cardClass}" id="prospect-card-${i}">
         <button class="remove-btn" onclick="removeProspect(${i})">×</button>
-        <div class="prospect-name">${p.name} ${rowColorNote}
+        <div class="prospect-name-row">
+          <input type="text" class="prospect-name-input" id="name-${i}" value="${p.name}">
           <span class="badge ${p.isFollowUp ? 'badge-fup' : 'badge-new'}">${p.isFollowUp ? 'Follow-up' : 'New call'}</span>
           ${isClosed ? '<span class="badge badge-closed">Closed</span>' : ''}
+          ${rowColorNote}
         </div>
         ${flagsHtml}
         <div class="eod-notes">${p.eodNotes}</div>
@@ -365,16 +325,16 @@ function updateApproveButton() {
 async function saveToSheets() {
   if (!parsedData) return;
 
-  // Collect AI-parsed prospects (excluding removed ones)
   const prospects = [];
   parsedData.prospects.forEach((p, i) => {
     if (removedIndices.has(i)) return;
+    const nameEl = document.getElementById(`name-${i}`);
     const statusEl = document.getElementById(`status-${i}`);
     const tempEl = document.getElementById(`temp-${i}`);
     const offeredEl = document.getElementById(`offered-${i}`);
     if (!statusEl) return;
     prospects.push({
-      name: p.name,
+      name: nameEl ? nameEl.value.trim() : p.name,
       email: document.getElementById(`email-${i}`)?.value || '',
       isFollowUp: p.isFollowUp,
       eodNotes: p.eodNotes,
@@ -386,11 +346,10 @@ async function saveToSheets() {
     });
   });
 
-  // Collect manual prospects
   for (let m = 0; m < manualCount; m++) {
     const id = `manual-${m}`;
     const card = document.getElementById(`prospect-card-${id}`);
-    if (!card) continue; // was removed
+    if (!card) continue;
     const nameEl = document.getElementById(`name-${id}`);
     if (!nameEl || !nameEl.value.trim()) continue;
     prospects.push({
@@ -406,7 +365,6 @@ async function saveToSheets() {
     });
   }
 
-  // Handle missing close
   if (hasMissingClose) {
     const missingName = document.getElementById('missingCloseName')?.value;
     if (!missingName) {
@@ -414,15 +372,10 @@ async function saveToSheets() {
       return;
     }
     prospects.push({
-      name: missingName,
-      email: '',
-      isFollowUp: true,
+      name: missingName, email: '', isFollowUp: true,
       eodNotes: `${parsedData.date} EOD — CLOSED (identified from STA Sales channel)`,
-      suggestedStatus: 'CLOSED👍🏼',
-      suggestedTemp: '🔥🔥🔥',
-      offered: 'Yes',
-      nextFollowUpDate: null,
-      setter: '',
+      suggestedStatus: 'CLOSED👍🏼', suggestedTemp: '🔥🔥🔥',
+      offered: 'Yes', nextFollowUpDate: null, setter: '',
     });
   }
 
@@ -434,8 +387,7 @@ async function saveToSheets() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prospects,
-        stats: parsedData.stats,
+        prospects, stats: parsedData.stats,
         date: parsedData.date,
         closerName: document.getElementById('closerSelect').value
       })
