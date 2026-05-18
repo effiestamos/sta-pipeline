@@ -232,6 +232,20 @@ function addManualProspect() {
 function isClosedStatus(s) { return s === 'CLOSED👍🏼'; }
 function isDQStatus(s) { return s === 'DQ'; }
 
+function checkMissingCloseName() {
+  if (!hasMissingClose) return;
+  const input = document.getElementById('missingCloseName');
+  const btn = document.getElementById('approveBtn');
+  const status = document.getElementById('approveStatus');
+  if (input && input.value.trim().length > 0) {
+    btn.disabled = false;
+    status.textContent = '';
+  } else {
+    btn.disabled = true;
+    status.textContent = 'Blocked — enter missing close name above first';
+  }
+}
+
 function renderResults(data) {
   hasMissingClose = false;
   document.getElementById('results').style.display = 'block';
@@ -246,7 +260,7 @@ function renderResults(data) {
     document.getElementById('globalFlags').innerHTML = data.globalFlags.map(f => {
       if (f.includes('MISSING_CLOSE')) {
         hasMissingClose = true;
-        return `<div class="flag-red">⛔ ${f}<br><input type="text" id="missingCloseName" placeholder="Type prospect name here..."></div>`;
+        return `<div class="flag-red">⛔ ${f}<br><input type="text" id="missingCloseName" placeholder="Type prospect name here..." oninput="checkMissingCloseName()"></div>`;
       }
       return `<div class="flag">⚑ ${f}</div>`;
     }).join('');
