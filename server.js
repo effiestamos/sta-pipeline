@@ -111,27 +111,30 @@ function mapStatus(status) {
 }
 
 function shouldSkipProspect(prospect) {
-  // NEVER skip follow-up calls — always log them
+  // NEVER skip follow-up calls
   if (prospect.isFollowUp) return false;
 
   const notes = (prospect.eodNotes || '').trim();
   const nameUpper = (prospect.name || '').trim().toUpperCase();
 
-  // Skip if name is just LT
   if (nameUpper === 'LT') return true;
 
-  // Strip date prefix to get actual content
+  // Strip date prefix
   const strippedNotes = notes
     .replace(/^\d+\/\d+\/?(\d+)?\s+EOD\s*/i, '')
     .trim();
 
-  // Skip if nothing left after date prefix
   if (strippedNotes === '') return true;
 
-  // LT or LT'd alone with fewer than 4 words of actual content = skip
-  const ltMatch = strippedNotes.match(/^LT'?[Dd]?\s*[-–]?\s*(.*)/i);
-  if (ltMatch) {
-    const afterLT = (ltMatch[1] || '').trim();
+  // If the entire note ends with LT or LT'd (with optional setter info before it) = skip
+  // e.g. "Sunaiana set - LT'd" or "LT'd" or "- LT" 
+  // This catches cases where LT'd is the last meaningful thing
+  if (/^.*LT'?[Dd]?\s*$/.test(strippedNotes)) return true;
+
+  // LT at the very start with fewer than 4 words after = skip
+  const ltAtStart = strippedNotes.match(/^LT'?[Dd]?\s*[-–]?\s*(.*)/i);
+  if (ltAtStart) {
+    const afterLT = (ltAtStart[1] || '').trim();
     const wordCount = afterLT.split(/\s+/).filter(w => w.length > 0).length;
     if (wordCount < 4) return true;
   }
@@ -254,19 +257,20 @@ ${eodText}
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
 - First time calls that are RS, NS, or Cancelled
 - Calls "handed off" with no call notes
-- "LT" alone with no call summary
-- "LT'd" alone with no call summary
+- "LT" alone with no call summary — call was transferred, never happened with this closer
+- "LT'd" alone or with only setter info and no call summary — skip it
+- Examples to skip: "Gisele - Sunaiana set - LT'd", "John - LT", "Maria - Nick set - LT'd"
 - CP NS, CP RS, CP Cancelled
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
 - First time calls with actual conversation notes
-- "LT" or "LT'd" WITH real call notes = LOG
+- "LT" or "LT'd" WITH real call notes after = LOG
 - "Handoff from [name]" WITH real call notes = LOG
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
-- ANY entry with FUP right after the name — ALWAYS log these
+- ANY entry with FUP right after the name — ALWAYS log these no exceptions
 - FUP - NS = log it
-- FUP - RS = log it
+- FUP - RS = log it  
 - FUP - Cancelled = log it
 - FUP - Closed = log it
 
@@ -354,7 +358,6 @@ Return ONLY valid JSON:
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
-    // Server-side filter — only applies to NEW prospects, never follow-ups
     const skipped = parsed.skipped || [];
     parsed.prospects = parsed.prospects.filter(p => {
       if (shouldSkipProspect(p)) {
