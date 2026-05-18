@@ -111,6 +111,9 @@ function mapStatus(status) {
 }
 
 function shouldSkipProspect(prospect) {
+  // NEVER skip follow-up calls — always log them
+  if (prospect.isFollowUp) return false;
+
   const notes = (prospect.eodNotes || '').trim();
   const nameUpper = (prospect.name || '').trim().toUpperCase();
 
@@ -125,15 +128,12 @@ function shouldSkipProspect(prospect) {
   // Skip if nothing left after date prefix
   if (strippedNotes === '') return true;
 
-  // Count words after LT/LT'd to determine if there are real notes
-  // "LT" or "LT'd" alone = skip
-  // "LT - " with fewer than 4 words after = skip
-  // "LT'd - actual call notes here" = keep
+  // LT or LT'd alone with fewer than 4 words of actual content = skip
   const ltMatch = strippedNotes.match(/^LT'?[Dd]?\s*[-–]?\s*(.*)/i);
   if (ltMatch) {
     const afterLT = (ltMatch[1] || '').trim();
     const wordCount = afterLT.split(/\s+/).filter(w => w.length > 0).length;
-    if (wordCount < 4) return true; // Not enough content = skip
+    if (wordCount < 4) return true;
   }
 
   return false;
@@ -253,29 +253,32 @@ ${eodText}
 
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
 - First time calls that are RS, NS, or Cancelled
-- Calls that were "handed off" to someone else with no call notes
-- "LT" alone with no call notes — transferred, call never happened
-- "LT'd" alone with no call notes — transferred, call never happened
+- Calls "handed off" with no call notes
+- "LT" alone with no call summary
+- "LT'd" alone with no call summary
 - CP NS, CP RS, CP Cancelled
 
-WHAT TO LOG (do NOT skip these):
-- "LT" or "LT'd" followed by actual call notes = LOG IT, call happened
-- "Handoff from [name]" followed by actual call notes = LOG IT, call happened
-- Any first time call with a real conversation summary
+WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
+- First time calls with actual conversation notes
+- "LT" or "LT'd" WITH real call notes = LOG
+- "Handoff from [name]" WITH real call notes = LOG
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
-- Any entry with FUP right after the name
-- Log all follow-ups even if RS, NS, or Cancelled
+- ANY entry with FUP right after the name — ALWAYS log these
+- FUP - NS = log it
+- FUP - RS = log it
+- FUP - Cancelled = log it
+- FUP - Closed = log it
 
 PROSPECT NAME EXTRACTION:
 - Extract ONLY the prospect's name
 - Strip ONLY: "Closers.io Consult w/", "& [closer name]", "(CP)"
-- Keep everything else in notes verbatim including "No Offer", "FDQ", outcome labels
+- Keep everything else in notes verbatim
 
 EOD NOTES RULES:
 - New prospects: prefix "M/D EOD" then ALL remaining text verbatim
 - Follow-ups: prefix "M/D EOD FUP - [outcome]" then verbatim
-- Copy VERBATIM — do not remove or reorder any words
+- Copy VERBATIM — do not remove any words
 
 FOLLOW-UP DATE RULES:
 - Specific day (Monday, Thursday, tomorrow, in 2 days): use that day name
@@ -351,7 +354,7 @@ Return ONLY valid JSON:
     const cleanJson = responseText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanJson);
 
-    // Server-side filter
+    // Server-side filter — only applies to NEW prospects, never follow-ups
     const skipped = parsed.skipped || [];
     parsed.prospects = parsed.prospects.filter(p => {
       if (shouldSkipProspect(p)) {
