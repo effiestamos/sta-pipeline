@@ -119,7 +119,12 @@ function shouldSkipProspect(prospect) {
 
   if (nameUpper === 'LT') return true;
 
-  // Strip date prefix
+  // FIX 3: Skip new calls that are NS (no-show) — no call happened
+  const notesUpper = notes.toUpperCase();
+  const strippedForNS = notesUpper.replace(/^\d+\/\d+\/?(\d+)?\s+EOD\s*/i, '').trim();
+  if (/\bNS\b/.test(strippedForNS) && !/FUP/.test(notesUpper)) return true;
+
+  // Strip date prefix for remaining checks
   const strippedNotes = notes
     .replace(/^\d+\/\d+\/?(\d+)?\s+EOD\s*/i, '')
     .trim();
@@ -127,8 +132,6 @@ function shouldSkipProspect(prospect) {
   if (strippedNotes === '') return true;
 
   // If the entire note ends with LT or LT'd (with optional setter info before it) = skip
-  // e.g. "Sunaiana set - LT'd" or "LT'd" or "- LT" 
-  // This catches cases where LT'd is the last meaningful thing
   if (/^.*LT'?[Dd]?\s*$/.test(strippedNotes)) return true;
 
   // LT at the very start with fewer than 4 words after = skip
@@ -171,8 +174,11 @@ function calculateFollowUpDate(eodDate, dayMention) {
     tomorrow.setDate(tomorrow.getDate() + 1);
     return `${tomorrow.getMonth() + 1}/${tomorrow.getDate()}/${tomorrow.getFullYear()}`;
   }
+  // FIX 2: Roll month correctly for "next week"
   if (lower === 'next week') {
-    return `${parts[0]}/?/${parts[2]}`;
+    const next = new Date(baseDate);
+    next.setDate(next.getDate() + 7);
+    return `${next.getMonth() + 1}/?/${next.getFullYear()}`;
   }
   const targetDay = dayMap[lower];
   if (targetDay !== undefined) {
@@ -255,7 +261,7 @@ EOD TEXT:
 ${eodText}
 
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
-- First time calls that are RS, NS, or Cancelled
+- First time calls that are RS, NS, or Cancelled — NS on a new call means no call took place, add to skipped as "Name - NS, no call took place"
 - Calls "handed off" with no call notes
 - "LT" alone with no call summary — call was transferred, never happened with this closer
 - "LT'd" alone or with only setter info and no call summary — skip it
@@ -264,6 +270,7 @@ WHAT TO SKIP (add to skipped array, do NOT add to prospects):
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
 - First time calls with actual conversation notes
+- NS on a new call = DO NOT log (add to skipped as "Name - NS, no call took place")
 - "LT" or "LT'd" WITH real call notes after = LOG
 - "Handoff from [name]" WITH real call notes = LOG
 
@@ -286,9 +293,16 @@ EOD NOTES RULES:
 
 FOLLOW-UP DATE RULES:
 - Specific day (Monday, Thursday, tomorrow, in 2 days): use that day name
-- Next week no specific day: NEXT_WEEK
+- "Next week" with no specific day: use NEXT_WEEK
+- A specific future date is mentioned (e.g. "June 10th", "6/10"): return it as M/D/YYYY using the correct month and year — if the EOD is from May and the date mentioned is in June or later, use June (or the correct month), not May
 - Will nurture/ULLP/no FUP booked: NURTURE
 - No follow-up: null
+
+DATE AND MONTH AWARENESS:
+- The EOD date tells you what month and year we are in
+- If someone says "next week" and the EOD is 5/30/2026, next week is in June 2026 — do NOT keep it in May
+- If a day of the week is mentioned (e.g. "Thursday") and that day is in the next calendar month based on the EOD date, resolve it to the correct month
+- Always use the actual calendar to resolve day names to dates — never assume the month stays the same
 
 TEMPERATURE RULES:
 - 🔥🔥🔥 = ONLY closed deals
@@ -361,7 +375,7 @@ Return ONLY valid JSON:
     const skipped = parsed.skipped || [];
     parsed.prospects = parsed.prospects.filter(p => {
       if (shouldSkipProspect(p)) {
-        skipped.push(`${p.name} - LT only, no call notes`);
+        skipped.push(`${p.name} - NS or LT only, no call took place`);
         return false;
       }
       return true;
@@ -377,8 +391,11 @@ Return ONLY valid JSON:
           p.nextFollowUpDate = '?';
           p.nextFollowUpDateIsApprox = true;
         } else if (fupLower === 'next_week' || fupLower === 'next week') {
+          // FIX 2: Roll month correctly — add 7 days to EOD date instead of keeping same month
           const parts = parsed.date.split('/');
-          p.nextFollowUpDate = `${parts[0]}/?/${parts[2]}`;
+          const base = new Date(parseInt(parts[2]), parseInt(parts[0]) - 1, parseInt(parts[1]));
+          base.setDate(base.getDate() + 7);
+          p.nextFollowUpDate = `${base.getMonth() + 1}/?/${base.getFullYear()}`;
           p.nextFollowUpDateIsApprox = true;
         } else if (['monday','tuesday','wednesday','thursday','friday','saturday','sunday','tomorrow'].includes(fupLower)) {
           const calculated = calculateFollowUpDate(parsed.date, fupLower);
@@ -433,13 +450,14 @@ app.post('/api/save-to-sheets', async (req, res) => {
     });
     const existingRows = existingResponse.data.values || [];
 
+    // FIX 1: Strip " | email" suffix from column C before building the lookup map
     const prospectRowMap = {};
     existingRows.forEach((row, index) => {
       if (index === 0) return;
-      const name = (row[2] || '').toLowerCase().trim();
-      if (name) {
-        prospectRowMap[name] = index + 1;
-        const firstName = name.split(' ')[0];
+      const rawName = (row[2] || '').split('|')[0].toLowerCase().trim();
+      if (rawName) {
+        prospectRowMap[rawName] = index + 1;
+        const firstName = rawName.split(' ')[0];
         if (!prospectRowMap[firstName]) {
           prospectRowMap[firstName] = index + 1;
         }
