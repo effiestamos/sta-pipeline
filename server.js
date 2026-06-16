@@ -31,7 +31,7 @@ const CLOSER_DROPDOWN_MAP = {
   'DAVE BATEMAN': 'Dave',
   'FOX MACPHERSON': 'Fox',
   'APOLO MENDOZA': 'Apolo',
-  'OWEN SAMMARONE',
+  'OWEN SAMMARONE': 'Owen',
   'LOGAN EWELL': 'Logan'
 };
 
