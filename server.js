@@ -21,7 +21,8 @@ const CLOSERS = [
   'DAVE BATEMAN',
   'FOX MACPHERSON',
   'APOLO MENDOZA',
-  'OWEN SAMMARONE'
+  'OWEN SAMMARONE',
+  'LOGAN EWELL'
 ];
 
 const CLOSER_DROPDOWN_MAP = {
@@ -30,7 +31,8 @@ const CLOSER_DROPDOWN_MAP = {
   'DAVE BATEMAN': 'Dave',
   'FOX MACPHERSON': 'Fox',
   'APOLO MENDOZA': 'Apolo',
-  'OWEN SAMMARONE': 'Owen'
+  'OWEN SAMMARONE',
+  'LOGAN EWELL': 'Logan'
 };
 
 const STATUS_OPTIONS = [
@@ -119,10 +121,12 @@ function shouldSkipProspect(prospect) {
 
   if (nameUpper === 'LT') return true;
 
-  // FIX 3: Skip new calls that are NS (no-show) — no call happened
+  // Skip new calls that are NS or RS — no call happened
   const notesUpper = notes.toUpperCase();
   const strippedForNS = notesUpper.replace(/^\d+\/\d+\/?(\d+)?\s+EOD\s*/i, '').trim();
-  if (/\bNS\b/.test(strippedForNS) && !/FUP/.test(notesUpper)) return true;
+  const isFUP = /\bFUP\b/.test(notesUpper) || /\bFU\b/.test(notesUpper);
+  if (/\bNS\b/.test(strippedForNS) && !isFUP) return true;
+  if (/\bRS\b/.test(strippedForNS) && !isFUP) return true;
 
   // Strip date prefix for remaining checks
   const strippedNotes = notes
@@ -148,9 +152,10 @@ function shouldSkipProspect(prospect) {
 function applyFUPRules(prospect) {
   if (!prospect.isFollowUp) return prospect;
   const notes = (prospect.eodNotes || '').toUpperCase();
-  const isRS = notes.includes('FUP - RS') || notes.includes('FUP-RS');
-  const isNS = notes.includes('FUP - NS') || notes.includes('FUP-NS');
-  const isCancelled = notes.includes('FUP - CANCELLED') || notes.includes('FUP - CANCELED');
+  // Match both FUP and FU variants
+  const isRS = notes.includes('FUP - RS') || notes.includes('FUP-RS') || notes.includes('FU - RS') || notes.includes('FU-RS');
+  const isNS = notes.includes('FUP - NS') || notes.includes('FUP-NS') || notes.includes('FU - NS') || notes.includes('FU-NS');
+  const isCancelled = notes.includes('FUP - CANCELLED') || notes.includes('FUP - CANCELED') || notes.includes('FU - CANCELLED') || notes.includes('FU - CANCELED');
   if (isRS) {
     prospect.suggestedTemp = null;
     prospect.suggestedStatus = null;
@@ -261,7 +266,7 @@ EOD TEXT:
 ${eodText}
 
 WHAT TO SKIP (add to skipped array, do NOT add to prospects):
-- First time calls that are RS, NS, or Cancelled — NS on a new call means no call took place, add to skipped as "Name - NS, no call took place"
+- First time calls that are RS or NS — no call took place, add to skipped as "Name - NS, no call took place" or "Name - RS, no call took place"
 - Calls "handed off" with no call notes
 - "LT" alone with no call summary — call was transferred, never happened with this closer
 - "LT'd" alone or with only setter info and no call summary — skip it
@@ -270,16 +275,17 @@ WHAT TO SKIP (add to skipped array, do NOT add to prospects):
 
 WHAT TO LOG AS NEW PROSPECT (isFollowUp: false):
 - First time calls with actual conversation notes
-- NS on a new call = DO NOT log (add to skipped as "Name - NS, no call took place")
+- NS or RS on a new call = DO NOT log (add to skipped)
 - "LT" or "LT'd" WITH real call notes after = LOG
 - "Handoff from [name]" WITH real call notes = LOG
 
 WHAT TO LOG AS FOLLOW-UP (isFollowUp: true):
-- ANY entry with FUP right after the name — ALWAYS log these no exceptions
-- FUP - NS = log it
-- FUP - RS = log it  
-- FUP - Cancelled = log it
-- FUP - Closed = log it
+- ANY entry with FUP or FU right after the name — ALWAYS log these, no exceptions
+- FU and FUP mean the same thing — treat them identically
+- FUP - NS = log it, FU - NS = log it
+- FUP - RS = log it, FU - RS = log it
+- FUP - Cancelled = log it, FU - Cancelled = log it
+- FUP - Closed = log it, FU - Closed = log it
 
 PROSPECT NAME EXTRACTION:
 - Extract ONLY the prospect's name
