@@ -22,7 +22,8 @@ const CLOSERS = [
   'FOX MACPHERSON',
   'APOLO MENDOZA',
   'OWEN SAMMARONE',
-  'LOGAN EWELL'
+  'LOGAN EWELL',
+  'DAVID MELMAN'
 ];
 
 const CLOSER_DROPDOWN_MAP = {
@@ -32,7 +33,8 @@ const CLOSER_DROPDOWN_MAP = {
   'FOX MACPHERSON': 'Fox',
   'APOLO MENDOZA': 'Apolo',
   'OWEN SAMMARONE': 'Owen',
-  'LOGAN EWELL': 'Logan'
+  'LOGAN EWELL': 'Logan',
+  'DAVID MELMAN': 'David'
 };
 
 const STATUS_OPTIONS = [
