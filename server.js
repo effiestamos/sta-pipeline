@@ -19,14 +19,16 @@ const CLOSERS = [
   'AMMAR ELMAHALAWY',
   'JACK WATSON',
   'DAVID MELMAN',
-  'THIAGO DUARTE'
+  'THIAGO DUARTE',
+  'AARON BREWER'
 ];
 
 const CLOSER_DROPDOWN_MAP = {
   'AMMAR ELMAHALAWY': 'Ammar',
   'JACK WATSON': 'Jack',
   'DAVID MELMAN': 'David',
-  'THIAGO DUARTE': 'Thiago'
+  'THIAGO DUARTE': 'Thiago',
+  'AARON BREWER': 'Aaron'
 };
 
 const STATUS_OPTIONS = [
